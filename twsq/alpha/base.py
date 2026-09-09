@@ -106,9 +106,9 @@ class Alpha:
 		self.pos_pnl = self.save_pos_pnl(path)
 		self.pos_pnl = self.pos_pnl.set_index('Date')
 
-		
-		pos_str = self.get_pos_string()
-		self.logging(f'Ending positions: {pos_str}')
+		if not self.is_backtesting:
+			pos_str = self.get_pos_string()
+			self.logging(f'Ending positions: {pos_str}')
 		return
 
 	# def get_bars(self,symbol,start_ts,end_ts,freq=None):
@@ -395,10 +395,10 @@ class Alpha:
 					start_port_val = pos_pnl['port_val'].iloc[-1]
 					
 		self.broker.pos[self.name] = start_pos.copy()
-
-
-		pos_str = self.get_pos_string()
-		self.logging(f'Initial positions: {pos_str}',level='info')
+		
+		if not self.broker.is_backtesting:
+			pos_str = self.get_pos_string()
+			self.logging(f'Initial positions: {pos_str}',level='info')
 
 		hist_pos = {}
 		hist_pos[ts] = start_pos.copy()

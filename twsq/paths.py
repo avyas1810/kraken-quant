@@ -27,7 +27,6 @@ def get_data_path():
 	return PATH
 
 ROOT = safe_path(get_data_path())
-#LOG_PATH = safe_path(ROOT, 'logs')
 ALPHA_PATH = safe_path(ROOT, 'alphas')
 DATA_PATH = safe_path(ROOT, 'data')
 

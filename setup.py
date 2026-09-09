@@ -23,10 +23,10 @@ setuptools.setup(
         "multidict >=4.5,<5.0"
     ],
 
-    classifiers=(
+    classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
-    ),
+    ],
     
     python_requires=">=3.0",
     

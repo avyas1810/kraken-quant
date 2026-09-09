@@ -1,0 +1,9 @@
+.env
+settings.yml
+__pycache__/
+*.py[cod]
+.DS_Store
+build/
+dist/
+*.egg-info/
+MyTWSQ/

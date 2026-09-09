@@ -229,21 +229,22 @@ class Broker:
 			if not self.is_backtesting:
 				# for backtesting do this on the runner 1x to not slow things down
 
-				if fill['qty'] < self.round_asset_quantity(order.symbol,
-					order.qty,pair=True,mode='precision'):
-				
-					logging.info('%s: %s Order to %s %s %s %s: %s filled @ %s' % (
-						order.strategy,
-						Emojis.order_filled, 
-						order.side, 
-						self.round_asset_quantity(order.base,order.qty), 
-						order.symbol, 
-						'fill', 
-						self.round_asset_quantity(order.base,fill['qty']), 
-						self.round_asset_quantity(order.quote,fill['ntn'] / fill['qty'])
-						))
-				else:
-					logging.debug('%s: %s %s fill: %s' % (order.strategy,Emojis.order_filled,order,fill['qty']))
+				# if fill['qty'] < self.round_asset_quantity(order.symbol,
+				# 	order.qty,pair=True,mode='precision'):
+					
+				# 	logging.info('%s: %s Order to %s %s %s %s: %s filled @ %s' % (
+				# 		order.strategy,
+				# 		Emojis.order_filled, 
+				# 		order.side, 
+				# 		self.round_asset_quantity(order.base,order.qty), 
+				# 		order.symbol, 
+				# 		'fill', 
+				# 		self.round_asset_quantity(order.base,fill['qty']), 
+				# 		self.round_asset_quantity(order.quote,fill['ntn'] / fill['qty'])
+				# 		))
+				# else:
+
+				logging.debug('%s: %s %s fill: %s' % (order.strategy,Emojis.order_filled,order,fill['qty']))
 				self.snap_port(order.strategy)
 
 		if status:
