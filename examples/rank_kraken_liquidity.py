@@ -2,18 +2,9 @@ import ccxt
 import pandas as pd
 
 
-SYMBOLS = [
-    "BTC/USD",
-    "ETH/USD",
-    "SOL/USD",
-    "XRP/USD",
-    "ADA/USD",
-    "DOGE/USD",
-    "LINK/USD",
-    "DOT/USD",
-    "AVAX/USD",
-    "LTC/USD",
-]
+from research_config import CANDIDATE_SYMBOLS
+
+SYMBOLS = CANDIDATE_SYMBOLS
 
 
 def calculate_quote_volume(ticker):
