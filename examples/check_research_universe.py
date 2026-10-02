@@ -2,10 +2,7 @@ import ccxt
 import pandas as pd
 
 
-assets = [
-    "BTC", "ETH", "SOL", "XRP", "ADA",
-    "DOGE", "LINK", "DOT", "AVAX", "LTC"
-]
+from research_config import CANDIDATE_SYMBOLS
 
 kraken = ccxt.kraken({"enableRateLimit": True})
 binance = ccxt.binance({"enableRateLimit": True})
@@ -15,8 +12,8 @@ binance.load_markets()
 
 results = []
 
-for asset in assets:
-    kraken_symbol = f"{asset}/USD"
+for kraken_symbol in CANDIDATE_SYMBOLS:
+    asset = kraken_symbol.split("/")[0]
     binance_symbol = f"{asset}/USDT"
 
     results.append({

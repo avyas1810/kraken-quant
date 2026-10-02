@@ -288,5 +288,5 @@ Do not treat a successful program run as evidence that a strategy is profitable.
 
 
 
-Verify and finalize `examples/research\_config.py` with the locked research universe and chronological dataset splits. Then run the historical-data audit and commit the configuration checkpoint. Do not examine strategy performance yet.
+Commit `22800a9` established `examples/research\_config.py` with the locked research universe and chronological dataset splits, and added the historical-data audit. The next phase is designing and implementing the reusable research experiment framework using the existing TWSQ interfaces. Do not examine locked test-period performance until the strategy specification and parameters are frozen.
 
