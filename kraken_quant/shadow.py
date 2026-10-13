@@ -1,6 +1,7 @@
 """Single-writer durable spot paper trading. No exchange submission interface."""
 
 from dataclasses import asdict
+from decimal import ROUND_FLOOR
 import hashlib
 import json
 
@@ -54,6 +55,10 @@ class ShadowRunner:
 
     def close(self):
         self.gateway.close()
+
+    def _fee_for(self, instrument, now):
+        """Override with a validated per-instrument/account fee provider."""
+        return self.fee
 
     def step(self):
         db = self.gateway.connection
@@ -112,9 +117,12 @@ class ShadowRunner:
         equity = cash + sum((positions[k] * quotes[k].bid for k in positions), money(0))
         day = now.normalize().isoformat()
         if state["day"] != day:
-            if any(positions.values()):
-                raise PermissionError("Held positions across UTC baseline boundary require operator reconciliation")
-            state.update(day=day, baseline=str(equity))
+            # Paper midnight mark: previous completed daily close, not a late
+            # restart quote. Persist once; never reset losses within a UTC day.
+            baseline = cash + sum((positions[k] * money(histories[k].iloc[-1]["close"])
+                                   for k in positions), money(0))
+            state.update(day=day, baseline=str(baseline), baseline_method="previous_utc_close",
+                         baseline_timestamp=now.normalize().isoformat())
         target = self.adapter.evaluate(timestamp=now, historical_data=histories,
             positions=positions, cash=cash, equity=equity)
         now = utc_instant(self.clock())
@@ -125,7 +133,7 @@ class ShadowRunner:
         for quote in quotes.values():
             if not pd.Timedelta(0) <= now - quote.timestamp <= pd.Timedelta(seconds=5):
                 raise ValueError("Stale quote after strategy evaluation")
-        fills = []
+        fills, skipped_orders = [], []
         if target is not None:
             quantities = {k: money(target[k]) * equity / money(histories[k].iloc[-1]["close"]) - positions[k]
                           for k in self.instruments}
@@ -135,19 +143,25 @@ class ShadowRunner:
                     continue
                 side = "buy" if delta > 0 else "sell"
                 price = quotes[key].ask if side == "buy" else quotes[key].bid
+                rounded = (abs(delta) / rules[key].quantity_step).to_integral_value(rounding=ROUND_FLOOR) * rules[key].quantity_step
+                if rounded < rules[key].minimum_quantity or rounded * price < rules[key].minimum_notional:
+                    skipped_orders.append(dict(instrument=asdict(key), reason="below_exchange_minimum", requested_quantity=str(abs(delta))))
+                    continue
                 order_id = hashlib.sha256((decision + key.symbol).encode()).hexdigest()
-                intent = OrderIntent(order_id, decision + ":" + key.symbol, key, side, abs(delta), price, self.fee)
+                fee_rate = self._fee_for(key, now)
+                intent = OrderIntent(order_id, decision + ":" + key.symbol, key, side, abs(delta), price, fee_rate)
                 account = AccountSnapshot(now, now.normalize(), cash, positions, money(state["baseline"]))
                 # Reservation persists before paper accounting. Crash in between halts on restart.
                 now = utc_instant(self.clock())
                 approved = self.gateway.reserve(intent, account=account, quotes=quotes, rules=rules[key], now=now)
                 signed = approved.quantity if side == "buy" else -approved.quantity
-                fee = approved.quantity * price * self.fee
+                fee = approved.quantity * price * fee_rate
                 cash -= signed * price + fee
                 positions[key] += signed
                 state.update(cash=str(cash), positions=[str(positions[k]) for k in self.instruments])
                 fill = dict(order_id=order_id, instrument=asdict(key), side=side,
-                            quantity=str(approved.quantity), price=str(price), fee=str(fee), timestamp=now.isoformat())
+                            quantity=str(approved.quantity), price=str(price), fee=str(fee),
+                            fee_rate=str(fee_rate), timestamp=now.isoformat())
                 # Partial cycle crash: committed fills remain, decision reservations prevent replay.
                 db.execute("BEGIN IMMEDIATE")
                 try:
@@ -161,7 +175,7 @@ class ShadowRunner:
                     raise
                 fills.append(fill)
         event = dict(mode="shadow", status="processed", decision=decision, timestamp=now.isoformat(),
-                     fills=fills, cash=str(cash), equity=str(cash + sum((positions[k] * quotes[k].bid for k in positions), money(0))))
+                     fills=fills, skipped_orders=skipped_orders, cash=str(cash), equity=str(cash + sum((positions[k] * quotes[k].bid for k in positions), money(0))))
         event["inputs"] = [dict(instrument=asdict(k),
             history_sha256=hashlib.sha256(histories[k].to_csv().encode()).hexdigest(),
             history_start=self.start.isoformat(), history_end=end.isoformat(),

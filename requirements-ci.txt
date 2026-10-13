@@ -6,3 +6,4 @@ ccxt==4.5.64
 PyYAML==6.0.3
 python-telegram-handler==2.2.1
 websocket-client==1.8.0
+python-dotenv==1.2.3

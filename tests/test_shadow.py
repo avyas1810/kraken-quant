@@ -171,7 +171,7 @@ def test_stale_quote_halts_before_accounting(tmp_path):
     instance.close()
 
 
-def test_held_positions_day_boundary_halts(tmp_path):
+def test_held_positions_day_boundary_uses_completed_close(tmp_path):
     instance = runner(tmp_path / "day.sqlite")
     instance.step()
     next_day = NOW + pd.Timedelta(days=1)
@@ -182,7 +182,12 @@ def test_held_positions_day_boundary_halts(tmp_path):
         frame.loc[NOW.normalize()] = frame.iloc[-1]
         return frame
     instance.market_data.bars = bars
-    with pytest.raises(PermissionError, match="baseline"): instance.step()
+    # Hold quantities on day two: no artificial rebalance due to fee drift.
+    instance.adapter.pipeline.strategy.target_weights = lambda context: None
+    event = instance.step()
+    assert event["status"] == "processed"
+    assert float(instance._state()["baseline"]) == pytest.approx(99.8899)
+    assert instance._state()["baseline_method"] == "previous_utc_close"
     instance.close()
 
 
