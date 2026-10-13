@@ -1,0 +1,21 @@
+{
+  "original_method_not_original_snapshot": true,
+  "source_files": {
+    "daily_raw.pkl": "f4f1ad8fe49d359368f580daf96d5ca80c243f25ee110c2675a7df2efc214379",
+    "binance_4h_raw.pkl": "b0a6074e2a8f8a92e00dfc6a534f4ec43c9b0d808e4b2059442001816b72e31a"
+  },
+  "original_rows": 12646,
+  "corrected_rows": 10389,
+  "original_start": "2020-09-22 11:59:59.999000",
+  "corrected_start": "2021-09-29 15:59:59.999000",
+  "common_oos_rows": 5448,
+  "final_stage_matches_phase1_exports": true,
+  "warnings": [
+    "Sequential contributions depend on experiment order",
+    "Regime warm-up history changes when sample is truncated",
+    "Fee timing and turnover corrections may interact",
+    "Original historical data snapshot may differ from frozen cache",
+    "The original and corrected market-data cleaning rules differ",
+    "Do not infer statistical significance from this accounting reconciliation"
+  ]
+}

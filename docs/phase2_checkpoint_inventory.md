@@ -26,3 +26,15 @@ verify formulas and software contracts only.
 Excluded from staging: `.env`, `.shadow-runtime`, datasets, notebooks with unknown
 embedded data, bytecode, pytest caches, build/dist artifacts and API credentials.
 The Phase 2 branch must be created only after the checkpoint push is confirmed.
+
+## Supplemental discovery
+
+A later filename-only search under the user folder found the notebooks, original
+`phase1_results`, `phase2_results` and `research_data_cache` outside this repository,
+under `C:/Users/avyas`. A separate clean repository named
+`systematic-crypto-regime-research` also exists there and is left untouched.
+The initial repository-only absence is therefore not a final data blocker.
+Exact selected Phase 1 source cells, initial Phase 2 code and small provenance
+tables are exported to `research/phase1_frozen` and secured in a supplemental
+checkpoint. Notebook outputs and raw datasets remain excluded. The original
+notebooks, caches, results and other repository are read-only throughout.

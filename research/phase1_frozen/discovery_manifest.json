@@ -1,0 +1,19 @@
+{
+  "phase1_notebook_sha256": "4799ca9020330748b6169a683372d9a47017fbe5824ed96a0afa523340496691",
+  "phase2_notebook_sha256": "81ea324a44c59756f1ec3ef81b4326eb74d2d4dbf0e880c4b51045ba6bb7ea29",
+  "original_artifact_hashes": {
+    "phase1_results\\run_manifest.json": "996bb79a82bd686db5c92428b70d97eb078ee4020027bd4100aa365888b009e3",
+    "phase1_results\\reconciliation_manifest.json": "a2cd8fc52f09f67227c9be593fa062f8baea866cb44737e421efbbeef99d1820",
+    "phase1_results\\reconciliation.csv": "60a1f1cc2b8c797fc07a9047ddd71885be5df4c925ed82d2970195b28aa79558",
+    "phase1_results\\four_hour_performance_test.csv": "e1ef72ff0d56b184f122cd4263bdfb9417230dbf807f009a3df07ca908427b21",
+    "phase1_results\\four_hour_performance_train.csv": "878f19d4d72ac78cd621f99ac57d446a77ebfe9bd302942fa668fdff005a9988",
+    "phase2_results\\bootstrap_summary.csv": "8040cc0911979bbee877fabd3f94b9ada4810721b377060bd728f051c45f1052",
+    "phase2_results\\btc_hac_regression.csv": "c44808247995ce3278be726a8aaad6b34572a3f3be24d783d43d6b2fc6a5bde9",
+    "phase2_results\\dsr_sensitivity.csv": "1c842a96b273dae58bc869b246e0d0eed39cabe642d9b603a5ff2d96b6ad4f68",
+    "phase2_results\\placebo_summary.csv": "00d00fc71f3246f2a675d9c106adeecc0559ecd89a8baf51141083ab961549e0",
+    "phase2_results\\train_oos_degradation.csv": "144aee49dee3bc62d1e349df580081d7aa799b98ec0eca4a8a356e53c94b115e",
+    "phase2_results\\phase2_manifest.json": "a63cdda729892082584046c29b41ddb949cf23648a2c2977dd1d1925dbcce9d0"
+  },
+  "datasets_copied": false,
+  "notebook_outputs_copied": false
+}

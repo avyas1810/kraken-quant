@@ -1,0 +1,2 @@
+observed_sharpe,placebo_sharpe_median,p_placebo_sharpe,observed_mean_bar,p_placebo_mean,observed_oos_active_fraction,median_placebo_oos_active_fraction,n_placebos
+0.37167171286727524,-0.8942319167750117,0.03,2.6260154444568916e-05,0.025,0.2725770925110132,0.2775330396475771,199

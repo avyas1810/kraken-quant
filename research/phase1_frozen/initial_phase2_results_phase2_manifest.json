@@ -1,0 +1,34 @@
+{
+  "phase1_source_notebook": "PriceData_PHASE1_GAPFIX.ipynb",
+  "phase1_source_sha256": "4799ca9020330748b6169a683372d9a47017fbe5824ed96a0afa523340496691",
+  "phase1_manifest_sha256": "996bb79a82bd686db5c92428b70d97eb078ee4020027bd4100aa365888b009e3",
+  "phase1_data_hashes": {
+    "binance_4h_raw.pkl": "b0a6074e2a8f8a92e00dfc6a534f4ec43c9b0d808e4b2059442001816b72e31a",
+    "daily_raw.pkl": "f4f1ad8fe49d359368f580daf96d5ca80c243f25ee110c2675a7df2efc214379"
+  },
+  "seed": 20261009,
+  "bootstrap_replications": 999,
+  "bootstrap_block_bars": 36,
+  "placebo_count": 199,
+  "placebo_sampling": "circular shifts of entire regime indicator, excluding small offsets",
+  "hac_lags": 36,
+  "annualization_bars": 2190,
+  "dsr_effective_trial_counts_assumed": [
+    2,
+    10,
+    25,
+    50,
+    100
+  ],
+  "existing_oos_not_pristine": true,
+  "train_end": "2023-12-31 23:59:59.999999",
+  "oos_start": "2024-01-01 00:00:00",
+  "limitations": [
+    "DSR trial count unknown",
+    "circular shifts preserve full-panel clustering, not identical OOS exposure",
+    "4h Sharpe annualization assumes 6 bars per day 365 days/year",
+    "existing OOS already used for strategy evaluation",
+    "bootstrap is descriptive and does not correct model selection",
+    "no short financing in Phase 1"
+  ]
+}

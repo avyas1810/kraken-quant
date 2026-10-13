@@ -1,0 +1,73 @@
+{
+  "data_start": "2019-01-01",
+  "data_end_exclusive": "2026-06-27",
+  "universe": [
+    "BTC",
+    "ETH",
+    "BNB",
+    "ADA",
+    "LINK",
+    "XRP",
+    "XLM",
+    "DOGE",
+    "AVAX"
+  ],
+  "cost_bps_per_gross_dollar": 20.0,
+  "data_hashes": {
+    "binance_4h_raw.pkl": "b0a6074e2a8f8a92e00dfc6a534f4ec43c9b0d808e4b2059442001816b72e31a",
+    "daily_raw.pkl": "f4f1ad8fe49d359368f580daf96d5ca80c243f25ee110c2675a7df2efc214379"
+  },
+  "daily_quality": {
+    "frequency": "daily",
+    "rows_before": 2734,
+    "missing_rows": 628,
+    "assets": [
+      "ADA-USD",
+      "AVAX-USD",
+      "BNB-USD",
+      "BTC-USD",
+      "DOGE-USD",
+      "ETH-USD",
+      "LINK-USD",
+      "XLM-USD",
+      "XRP-USD"
+    ],
+    "irregular_intervals": 1,
+    "first_gap_after": "2020-09-22 00:00:00",
+    "last_gap_after": "2020-09-22 00:00:00",
+    "rows_discarded_before_continuous_suffix": 2,
+    "rows_after": 2103
+  },
+  "four_hour_quality": {
+    "frequency": "4h",
+    "rows_before": 16430,
+    "missing_rows": 3810,
+    "assets": [
+      "ADAUSDT",
+      "AVAXUSDT",
+      "BNBUSDT",
+      "BTCUSDT",
+      "DOGEUSDT",
+      "ETHUSDT",
+      "LINKUSDT",
+      "XLMUSDT",
+      "XRPUSDT"
+    ],
+    "irregular_intervals": 6,
+    "first_gap_after": "2020-12-21 19:59:59.999000",
+    "last_gap_after": "2021-09-29 11:59:59.999000",
+    "rows_discarded_before_continuous_suffix": 2230,
+    "rows_after": 10389
+  },
+  "python": "3.10.11 (tags/v3.10.11:7d4cc5a, Apr  5 2023, 00:38:17) [MSC v.1929 64 bit (AMD64)]",
+  "pandas": "2.0.1",
+  "numpy": "1.24.3",
+  "assumptions": [
+    "close-price execution after signal observation",
+    "full L1 gross traded notional",
+    "post-fee target equity self-financing",
+    "short financing excluded",
+    "complete-case continuous market panel",
+    "no trade at final sample close"
+  ]
+}

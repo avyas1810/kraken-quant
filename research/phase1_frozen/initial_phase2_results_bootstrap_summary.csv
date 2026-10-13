@@ -1,0 +1,2 @@
+strategy_sharpe,sharpe_ci_low,sharpe_ci_high,mean_return_advantage_per_bar,mean_advantage_ci_low,mean_advantage_ci_high,one_sided_p_advantage_gt_zero
+0.37167171286727524,-0.909108255430759,1.5799565191551965,0.00014022781855185752,4.049921917157911e-05,0.0002458515616108076,0.004
