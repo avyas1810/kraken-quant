@@ -110,3 +110,11 @@ Staged-blob inspection found that the pending `text eol=lf` rule normalized CRLF
 ### 2026-10-16 - Checkout verification
 
 Verified the current9-table manifest and original recovered source/manifest identities from a fresh staged checkout. Frozen-artifact staging differences are line endings only (`git diff --cached --ignore-space-at-eol` is empty for the recovered corpus). CRLF is explicitly treated as a line ending by whitespace checks. No inference values or source semantics changed.
+
+### 2026-10-16 - Local checkpoint receipts
+
+- `a670029`:verified offline Alpha startup timeout correction.
+- `1587c70`:completed pending Phase2 implementation/results, cumulative logs, report/runbook/register and frozen-byte packaging.
+- Independent publication `8fec265`:corrected0.37 headline, current report/results and explicit legacy labels.
+
+These are local commits; no remote push occurred. This task has not completed the original end-to-end trading objective. Open requirements are reliable fresh quote collection, a qualified Kraken-compatible frozen candidate, independent review, real account verification, sustained prospective/shadow evidence, live transport/lifecycle implementation and explicit first-order approval. The current paper correction is Markdown; legacy PDF/DOCX and charts remain labeled archival. Continue from this register rather than recreating completed modules or treating the current candidate as approved.

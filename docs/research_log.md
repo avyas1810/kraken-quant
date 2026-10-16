@@ -112,3 +112,7 @@ Detected and corrected a packaging issue:Git line-ending normalization would alt
 ### 2026-10-16 - Checkout verification
 
 Current reviewed output hashes and original source identities also pass after a fresh staged checkout. This closes the line-ending packaging defect rather than merely validating local files. Raw inputs, frozen parameters, seeds and results are unchanged.
+
+### 2026-10-16 - Local checkpoint receipts and research status
+
+Implementation checkpoint `1587c70` preserves the completed Phase2 slice; independent publication correction `8fec265` supersedes the old headline locally. The0.37 candidate remains exploratory and unqualified for live promotion. Original study and output versions are preserved. No new candidate was invented, tuned or declared successful to satisfy the delivery schedule. Independent review and genuinely new evidence remain required; the old PDF/DOCX/charts are marked archival and the current correction is Markdown. No remote publication or live execution occurred.
