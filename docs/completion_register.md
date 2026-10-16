@@ -4,7 +4,7 @@ Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infras
 
 | Requirement | Final status | Evidence / dependency |
 | --- | --- | --- |
-| Initial checkpoints, privacy and branches | Initial and final commits pushed; remote SHAs verified | Initial private `c1337da11d4267dedfc2c28cc3e487e659ecd389`; final private `44c79befe272459b015ec8c3b27a90fde0a5ae10`. Initial public `8fec2652579dc31b1c0c3c87129d98923bc2d679`; final public `d34ee159661b834acc66e60de4de6d73730197ea`. |
+| Initial checkpoints, privacy and branches | Initial and final commits pushed; remote SHAs verified | Initial private `c1337da11d4267dedfc2c28cc3e487e659ecd389`; implementation commit `44c79befe272459b015ec8c3b27a90fde0a5ae10`. Initial public `8fec2652579dc31b1c0c3c87129d98923bc2d679`; final public `d34ee159661b834acc66e60de4de6d73730197ea`. A private log/register receipt was pushed after the implementation commit; the current branch tip is recorded in the final delivery log/response. |
 | Frozen Phase 1/2 reproducibility | Passed | Nine result tables verified; 1,999 bootstrap draws and 999 placebo trials/method; raw return replay max error about1e-16; no frozen inputs or locked test changed/opened. |
 | Statistical audit and trial sensitivity | Implemented and documented | Accounting/timing/cost review, corrected DSR sensitivity, placebo distinctions, BTC HAC, train/OOS stability. 18 known correlated trials; complete historical count is unknown. |
 | Expanded point-in-time universe | Implementation/tests complete; empirical archive unavailable | Listing/delisting/known-at/liquidity/missingness/provenance/survivorship controls; 30-asset fixtures. Genuine broad historical instrument archive is missing. |
@@ -18,7 +18,7 @@ Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infras
 | Windows-first operator manual | Markdown/PDF complete | `docs/STRATEGY_RESEARCH_AND_TRADING_SOP.md` and `.pdf`; examples run. PDF visually reviewed. Public paper DOCX received structural/numeric checks; visual Word/LibreOffice renderer is unavailable. |
 | Current independent paper and figures | Built and numerically verified | Current public PDF, DOCX, Markdown and three charts; headline values reconcile at 0.3717 / +12.0116% / -30.0367%. Publication tests3 passed. Independent human review remains outstanding. |
 | Full tests / static / frozen artifact checks | Passed | Private suite318 passed in31.50s; public suite3 passed; phase2 result verifier passed; tutorial, simulation, recovery, PDF and numerical checks passed. |
-| Final implementation/publication commits and remote CI | Branch commits pushed and SHA verified | Private branch `completion/end-to-end-platform-20261016` at `44c79befe272459b015ec8c3b27a90fde0a5ae10`; public branch `completion/reconciled-paper-20261016` at `d34ee159661b834acc66e60de4de6d73730197ea`. Local suites passed. Private GitHub Actions state was inaccessible to the unauthenticated API query (404); public repository has no workflow configured. |
+| Final implementation/publication commits and remote CI | Branch commits pushed and SHA verified | Private implementation commit `44c79befe272459b015ec8c3b27a90fde0a5ae10` and subsequent pushed log/register receipt; public branch `completion/reconciled-paper-20261016` at `d34ee159661b834acc66e60de4de6d73730197ea`. Local suites passed. Private GitHub Actions state was inaccessible to the unauthenticated API query (404); public repository has no workflow configured. |
 
 ## Only outstanding external or future-evidence requirements
 
