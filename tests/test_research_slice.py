@@ -321,7 +321,9 @@ print("Offline Alpha injection passed")
     environment["TWSQROOT"] = str(tmp_path / "empty_twsq")
     # Ignore legacy tracked bytecode; exercise the current TWSQ source files.
     environment["PYTHONPYCACHEPREFIX"] = str(tmp_path / "fresh_bytecode")
+    # A fresh bytecode tree recompiles pandas/ccxt and legacy imports on Windows.
+    # Bound cold-start time without weakening any offline/credential assertions.
     result = subprocess.run([sys.executable, "-c", script], env=environment,
-                            capture_output=True, text=True, timeout=30)
+                            capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
     assert "Offline Alpha injection passed" in result.stdout
