@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "source_sha256": "14780b77dac5480c74ac894ea9539a42ba03301b519838f247391f8e820b57f9",
+  "oos_start_rule": "2024-01-01",
+  "input_rows": 10389,
+  "results": [
+    {
+      "return_series": "4h_mom_low_correlation",
+      "oos_start_utc": "2024-01-01T03:59:59.999000+00:00",
+      "oos_end_utc": "2026-06-26T23:59:59.999000+00:00",
+      "four_hour_observations": 5448,
+      "utc_days": 908,
+      "four_hour_sharpe_sqrt_2190_rf0": 0.37167171286727524,
+      "daily_compounded_sharpe_sqrt_252_rf0": 0.2998513332149872,
+      "daily_compounded_sharpe_sqrt_365_rf0": 0.3608711353851158,
+      "compounded_total_return": 0.12011609612136964,
+      "wealth_reconciliation_abs_error": 5.773159728050814e-15,
+      "risk_free_rate": 0.0,
+      "daily_aggregation": "compound six consecutive UTC four-hour net returns per UTC calendar date",
+      "status": "historical_already_inspected_not_pristine_holdout"
+    }
+  ]
+}

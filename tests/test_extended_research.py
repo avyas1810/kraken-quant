@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from research.extended.universe import AssetHistory,eligibility
+from research.extended.binance_pit_replay import close_time_index, momentum_weights, select_august_cohort
 from research.extended.execution import execution_stress
 
 def test_thirty_asset_point_in_time_listing_delisting_missing_data():
@@ -43,3 +44,29 @@ def test_invalid_expanded_inputs_rejected():
     with pytest.raises(ValueError):execution_stress(weights,returns,volume,fee=float('nan'))
     returns.iloc[4,0]=-1
     with pytest.raises(ValueError):execution_stress(weights,returns,volume)
+
+
+def test_binance_millisecond_and_microsecond_4h_timestamps_align():
+    stamps=close_time_index([1735689600000,1735689600000000])
+    expected=pd.Timestamp('2025-01-01T03:59:59.999Z')
+    assert stamps[0]==expected and stamps[1]==expected
+
+
+def test_expanded_cohort_momentum_does_not_read_future_prices():
+    index=pd.date_range('2021-08-01',periods=240,freq='4h',tz='UTC')
+    columns=['a','b','c','d','e'];rng=np.random.default_rng(7)
+    close=pd.DataFrame(100*np.cumprod(1+rng.normal(.0002,.01,(240,5)),axis=0),index=index,columns=columns)
+    weights=momentum_weights(close);cut=index[220]
+    altered=close.copy();altered.loc[index[221]:]=altered.loc[index[221]:]*3
+    changed=momentum_weights(altered)
+    pd.testing.assert_series_equal(weights.loc[cut],changed.loc[cut])
+    assert np.isclose(weights.loc[cut].abs().sum(),1.0)
+
+
+def test_august_cohort_selection_uses_historical_quote_volume_and_exclusions():
+    rows=[{'symbol':f'A{i}','pair':f'A{i}USDT','bars':31,'quote_volume_usdt':float(100-i)} for i in range(35)]
+    rows += [{'symbol':'BUSD','pair':'BUSDUSDT','bars':31,'quote_volume_usdt':10000.0},
+             {'symbol':'UP','pair':'UPUSDT','bars':31,'quote_volume_usdt':9000.0},
+             {'symbol':'SHORT','pair':'SHORTUSDT','bars':12,'quote_volume_usdt':8000.0}]
+    chosen=select_august_cohort(rows)
+    assert len(chosen)==30 and chosen[0]['symbol']=='A0' and chosen[-1]['symbol']=='A29'
