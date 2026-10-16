@@ -4,7 +4,7 @@ Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infras
 
 | Requirement | Final status | Evidence / dependency |
 | --- | --- | --- |
-| Initial checkpoints, privacy and branches | Checkpoint pushed before code; final push pending | Private checkpoint `c1337da11d4267dedfc2c28cc3e487e659ecd389`; public checkpoint `8fec2652579dc31b1c0c3c87129d98923bc2d679`; branches `completion/end-to-end-platform-20261016` and `completion/reconciled-paper-20261016`. |
+| Initial checkpoints, privacy and branches | Initial and final commits pushed; remote SHAs verified | Initial private `c1337da11d4267dedfc2c28cc3e487e659ecd389`; final private `44c79befe272459b015ec8c3b27a90fde0a5ae10`. Initial public `8fec2652579dc31b1c0c3c87129d98923bc2d679`; final public `d34ee159661b834acc66e60de4de6d73730197ea`. |
 | Frozen Phase 1/2 reproducibility | Passed | Nine result tables verified; 1,999 bootstrap draws and 999 placebo trials/method; raw return replay max error about1e-16; no frozen inputs or locked test changed/opened. |
 | Statistical audit and trial sensitivity | Implemented and documented | Accounting/timing/cost review, corrected DSR sensitivity, placebo distinctions, BTC HAC, train/OOS stability. 18 known correlated trials; complete historical count is unknown. |
 | Expanded point-in-time universe | Implementation/tests complete; empirical archive unavailable | Listing/delisting/known-at/liquidity/missingness/provenance/survivorship controls; 30-asset fixtures. Genuine broad historical instrument archive is missing. |
@@ -18,7 +18,7 @@ Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infras
 | Windows-first operator manual | Markdown/PDF complete | `docs/STRATEGY_RESEARCH_AND_TRADING_SOP.md` and `.pdf`; examples run. PDF visually reviewed. Public paper DOCX received structural/numeric checks; visual Word/LibreOffice renderer is unavailable. |
 | Current independent paper and figures | Built and numerically verified | Current public PDF, DOCX, Markdown and three charts; headline values reconcile at 0.3717 / +12.0116% / -30.0367%. Publication tests3 passed. Independent human review remains outstanding. |
 | Full tests / static / frozen artifact checks | Passed | Private suite318 passed in31.50s; public suite3 passed; phase2 result verifier passed; tutorial, simulation, recovery, PDF and numerical checks passed. |
-| Final implementation/publication commits and remote CI | Pending at time of this register edit | Review diff/secret boundaries, commit on completion branches, push and verify remote SHAs. No force-push. |
+| Final implementation/publication commits and remote CI | Branch commits pushed and SHA verified | Private branch `completion/end-to-end-platform-20261016` at `44c79befe272459b015ec8c3b27a90fde0a5ae10`; public branch `completion/reconciled-paper-20261016` at `d34ee159661b834acc66e60de4de6d73730197ea`. Local suites passed. Private GitHub Actions state was inaccessible to the unauthenticated API query (404); public repository has no workflow configured. |
 
 ## Only outstanding external or future-evidence requirements
 
@@ -30,4 +30,4 @@ Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infras
 - Separate explicit operator authorisation before any first real-money order. The implementation remains disabled by default. No withdrawals, transfers or funding were implemented or performed.
 - Visual DOCX rendering in Word/LibreOffice could not be run because neither renderer is installed; document structure, letter page size, table geometry and numerical values were verified programmatically.
 
-The completion mandate is complete for implementable local engineering, research tooling, operator documentation and reproducible publication artifacts once the final branch commits are pushed. Future market evidence, unavailable private account verification and explicit first-order approval are not represented as completed.
+The completion mandate is complete for implementable local engineering, research tooling, operator documentation and reproducible publication artifacts; both completion branches are pushed and their remote SHAs match local commits. Future market evidence, unavailable private account verification and explicit first-order approval are not represented as completed.

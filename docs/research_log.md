@@ -141,3 +141,8 @@ Validation/evidence: Daily aligned paired bootstrap, DSR sensitivity, benchmark 
 Current independent publication artifacts are `systematic-crypto-regime-research/report/crypto_momentum_regime_research_current.{md,pdf,docx}`, `figures/current/` and reviewed `results/reconciled_phase2_20261016/`. PDF, DOCX and chart CSV values agree exactly at displayed precision; public tests3 pass. The paper states the study is exploratory, supersedes0.75 and retains an independent-review checklist. No second-person external sign-off has occurred. Public repository excludes the licensed engine and raw caches. DOCX structural/numeric layout was verified; a visual Word/LibreOffice renderer is unavailable.
 
 No strategy meets acceptance. No return of a paper/shadow operator or synthetic simulation changes that conclusion. Future market time, authentic expanded-universe archive, complete original trial logs, dedicated account credentials/verification, independent second-person report review and separate explicit approval for any first real order remain external/evidence dependencies.
+
+
+### 2026-10-16 - Completion branch publication
+
+The independent corrected paper and generated PDF/DOCX/charts are pushed in public commit `d34ee159661b834acc66e60de4de6d73730197ea`; the implementation and research audit artifacts are pushed privately in commit `44c79befe272459b015ec8c3b27a90fde0a5ae10`. Both remote branch hashes match local. Publication verifier still matches0.3717 Sharpe,+12.0116% net return and-30.0367% maximum drawdown. This publication does not claim a second-person independent sign-off. Original0.75 headline remains superseded.
