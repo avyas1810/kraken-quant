@@ -1,0 +1,29 @@
+{
+  "recorded_trial_count": 18,
+  "recorded_names": [
+    "4h_momentum",
+    "4h_reversal",
+    "4h_mom_high_dispersion",
+    "4h_mom_low_dispersion",
+    "4h_mom_high_volatility",
+    "4h_mom_low_volatility",
+    "4h_mom_high_volume",
+    "4h_mom_low_volume",
+    "4h_mom_high_correlation",
+    "4h_mom_low_correlation",
+    "4h_rev_high_dispersion",
+    "4h_rev_low_dispersion",
+    "4h_rev_high_volatility",
+    "4h_rev_low_volatility",
+    "4h_rev_high_volume",
+    "4h_rev_low_volume",
+    "4h_rev_high_correlation",
+    "4h_rev_low_correlation"
+  ],
+  "unknown_experiments": "Unknown; notebooks and human iterations not exhaustively logged",
+  "effective_independent_trials": "Not identified; correlation rank is descriptive only",
+  "correlation_participation_rank": 5.026062836638034,
+  "training_dispersion_per_period": 0.09272287350116355,
+  "oos_inspected": true,
+  "conclusion": "DSR is sensitive to unknown effective trial count and dispersion; no unique selection-adjusted probability"
+}

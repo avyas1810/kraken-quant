@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "current_candidate_sha256": "d60807ad8c61d47bce517f29ecbd237b2a7107965c8459024d992d4371cfc3f5",
+  "empirical_evaluation_count": 1,
+  "optimisation_trials_added": 0,
+  "metrics_unchanged": true,
+  "incident": "New preregistration files were overwritten/deleted during software acceptance-schema and source-identity corrections. This violated intended create-once history. Original Phase1/2 and candidate empirical outputs remained unchanged.",
+  "initial_reconstruction": {
+    "file": "registration_history_reconstruction.json",
+    "sha256": "be288021aa7b9e66b3437a6d9fe96f813bc4939ad118542152c86e438278b29a",
+    "basis": "First generator code in task tool history plus unchanged authenticated local-cache hashes. Reconstructed record, not independently recovered original file bytes.",
+    "status": "Reconstructed historical information only; not_valid_preregistration=true; no original-byte recovery claim"
+  },
+  "deleted_versions": [
+    {
+      "path": "candidate_initial_preregistration.json",
+      "content": "First candidate: original four-field acceptance schema, no frozen_at or source_code_hashes, placeholder code revision. Reconstructed specification available."
+    },
+    {
+      "path": "candidate_protocol_intermediate.json",
+      "content": "Intermediate full candidate with frozen_at and source hashes before complete original gates were added; original timestamp and exact bytes unavailable."
+    },
+    {
+      "path": "candidate.json (successive task-local versions)",
+      "known_superseded_sha256": "635bbb535e23b5b11b8b9bdc06a837471c4945d356f30416f8e42a21b905994f",
+      "content": "Software-schema/source-identity updates; full exact version bytes/timestamps unavailable after overwrite. Final current file retained."
+    }
+  ],
+  "interpretation": "One fixed strategy/one training evaluation. Software corrections do not create independent market trials, new holdouts, or favourable empirical results. No future evidence exists.",
+  "prevention": "Never overwrite preregistration: create a versioned candidate path for every future schema/source correction and preserve original records."
+}

@@ -1,0 +1,29 @@
+{
+  "candidate_sha256": "d60807ad8c61d47bce517f29ecbd237b2a7107965c8459024d992d4371cfc3f5",
+  "qualified_for_review": false,
+  "live_authorized": false,
+  "reasons": [
+    "Missing nonnegative integer actual_daily_decisions",
+    "Missing nonnegative integer simulated_order_lifecycles",
+    "Drawdown above threshold",
+    "Missing unique actual daily decision timestamps after preregistration",
+    "Missing20 distinct completed lifecycle ids",
+    "Lifecycle count disagrees with completed ids",
+    "Fewer than 30 actual daily decisions",
+    "Fewer than 20 order lifecycles",
+    "Replay is not prospective evidence",
+    "Missing or failed net_return",
+    "Missing or failed benchmark_relative_return",
+    "Missing or failed positive_assets",
+    "Missing or failed neighbour_parameters_positive",
+    "Missing or failed round_trips",
+    "Missing or failed completion_fraction",
+    "Missing or failed doubled_spread_slippage_return",
+    "Missing or failed bootstrap_mean_excess_ci_low",
+    "Missing or failed elapsed_seconds",
+    "95percent bootstrap confidence required",
+    "Fault or missing-day gate failed",
+    "Reliability/fault criteria not passed",
+    "Independent review not passed"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "phase1_reconciliation": {
+    "4h_momentum": 9.996344030316351e-17,
+    "4h_mom_low_correlation": 9.974659986866641e-17
+  },
+  "phase2_integrity": {
+    "status": "verified",
+    "tables": 9,
+    "bootstrap_replications": 1999,
+    "placebo_trials_per_method": 999,
+    "historical_data_fabricated": false
+  },
+  "oos_sharpe": 0.3716717128672456,
+  "oos_cumulative_return": 0.12011609612133123,
+  "oos_maximum_drawdown": -0.3003665201868365,
+  "source_hashes": {
+    "frozen_source_cells": "a376dfb42f60acd516935c9418c8f611c2e744bb807d118623748f2541e51b42",
+    "original_phase1_manifest": "996bb79a82bd686db5c92428b70d97eb078ee4020027bd4100aa365888b009e3",
+    "daily_raw.pkl": "f4f1ad8fe49d359368f580daf96d5ca80c243f25ee110c2675a7df2efc214379",
+    "binance_4h_raw.pkl": "b0a6074e2a8f8a92e00dfc6a534f4ec43c9b0d808e4b2059442001816b72e31a",
+    "4h_net_returns.csv": "14780b77dac5480c74ac894ea9539a42ba03301b519838f247391f8e820b57f9"
+  },
+  "classification": "Inspected historical evidence, not untouched holdout",
+  "trained_new_candidate_against_oos": false
+}

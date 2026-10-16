@@ -103,8 +103,11 @@ class ShadowRunner:
                 clean[field] = value
             clean["timestamp"] = clean.index
             histories[key] = clean
-        quotes = {k: self.market_data.quote(k) for k in self.instruments}
         rules = {k: self.market_data.rules(k) for k in self.instruments}
+        # Metadata may require several REST requests; fetch executable BBO
+        # afterwards so that metadata latency cannot age otherwise fresh quotes.
+        quotes = (self.market_data.quotes(self.instruments) if hasattr(self.market_data, "quotes")
+                  else {k: self.market_data.quote(k) for k in self.instruments})
         now = utc_instant(self.clock())
         if now.normalize() - DAY != end:
             raise ValueError("UTC day changed during data collection; retry")

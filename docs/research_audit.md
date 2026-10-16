@@ -1,0 +1,41 @@
+# Independent quantitative review and current research evidence
+
+Date: 2026-10-16. Eric and Mark are two explicit review roles performed by this implementation agent, not claims that named human reviewers approved the work. Eric reviews accounting/data causality; Mark reviews inference/selection. Their conclusions require operator review before promotion.
+
+## Eric: accounting, provenance and execution
+
+A new hash-verified replay of the frozen source against original local inputs reconciles every exported net return: maximum error9.9964e-17 baseline and9.9747e-17 low-correlation. All9 reviewed Phase2 tables verify their manifests; yearly/quarterly wealth identities reconcile. Receipt: `research/extended/results_independent_audit/audit_receipt.json`.
+
+Frozen construction uses completed close observations, rolling regimes and held weights shifted before realised returns. Some correlation percentile thresholds include the current completed observation: this is causal only for the next return, not an attainable fill at the same close. Frozen self-financing20bp costs,55-step solver and drift-aware turnover reconcile arithmetically. This does not validate instantaneous closing-price execution, borrowing availability, funding liquidity or equal access to every constituent.
+
+The recovered study is9 retrospectively selected assets, signed Binance4H weights, continuous suffix after missing rows/gaps and Yahoo daily regimes. Complete-case cleaning avoids forward-filled stale prices and bridging missing intervals but changes coverage and does not remove survivorship or listing-selection bias. It is distinct from five-asset Kraken USD spot and must never be promoted by renaming.
+
+Added `research.extended.execution.execution_stress` independently models prior-bar executable liquidity, drift-aware changes, adverse spread/slippage, square-root participation impact, execution delay and annual short financing. Participation breaches halt. Authentic TRAIN-only sensitivity ran on frozen market returns with nine scenarios: fee/spread/slippage/impact/delay/financing shocks worsen or alter outcomes; tight liquidity halts. `training_execution_sensitivity.csv` is a fixed-$10,000 sizing approximation, not exact funded fills or a replacement frozen result. Its broad signed momentum base Sharpe-2.772 is not the historical low-correlation headline. Impact coefficients are assumptions, not calibrated estimates.
+
+## Mark: inference and multiplicity
+
+Bootstrap uses paired noncircular moving blocks12/36/72/1444H bars,1999 fixed-seed draws, percentile intervals and approximate centered tests. Paired indices preserve strategy/baseline dependence. Finite blocks do not guarantee stationarity; alternative block rules and nonstationarity remain assumptions. All absolute Sharpe intervals cross zero; relative improvement does not establish standalone profitability.
+
+Placebo uses999 random masks per run-length/circular construction and replay through frozen accounting. It preserves different aspects of temporal activity, then conditions on exposure/turnover. Conditioning accepts740/761 trials with remaining imbalance; approximate tail evidence is unadjusted for all historical research. Drawdown support is weak. The daily platform alignment placebo is separately labelled a correlation diagnostic, not equivalent to the frozen regime-mask profitability test.
+
+DSR correctly uses per-observation Sharpe, skew/raw kurtosis, explicit trial dispersion and Gaussian expected maximum. Historical archive reconstructs18 correlated tried strategies. Other notebook/human experiments are unknown, never imputed. Training-return correlation participation rank5.026 is descriptive, not an effective trial-count estimate. Sensitivity uses N2/10/18/25/50/100/250 and training dispersion times0.5/1/2. No unique DSR or selection-adjusted profitability claim follows. Archive outputs under `research/extended/results_trial_audit`.
+
+BTC OLS uses aligned net/gross returns, Bartlett HAC lags12/36/72/144 and finite-sample corrections. Net-alpha p approximately0.566–0.601; confidence intervals cross zero. HAC is robust to limited dependence/heteroskedasticity, not omitted-factor or selection bias. Split/year/quarter and positive-bar hindsight sensitivities disclose negative training, concentrated gains and instability; deleting winners is descriptive, never a causal strategy.
+
+## Verified findings and Kraken candidate
+
+Frozen inspected OOS low-correlation momentum Sharpe0.3716717129, cumulative return0.1201160961 and maximum drawdown-0.3003665202. Old0.75 headline is superseded. Relative improvement is promising; standalone alpha and profitability remain unestablished. Existing inspected OOS is never relabelled untouched.
+
+Separately registered `kraken_spot_multi_momentum_v1` is long-only daily30-day momentum, BTC60-day mean regime,20-day annualised volatility ceiling1.0 and gross budget0.8. A single fixed specification was evaluated only on2020-08-11–2023-12-31 original audited five-asset local Binance USDT proxies. Costs:26bp fee,10bp full spread and5bp slippage per side. TRAIN Sharpe1.3063267, return+461.2548%, drawdown56.8999%. The candidate FAILS unchanged15% drawdown acceptance. No validation/test tuning or Kraken live execution occurred. Exact manifests, source/data hashes, candidate and failed qualification are under `research/extended/results_kraken_candidate`. Prospective approval cannot bypass this failure.
+
+## Expanded universe and holdout
+
+`research.extended.universe` supports20–30+ arbitrary historical constituents in a separate panel without modifying the locked five-asset config. Every symbol requires listing/effective delisting, metadata known-at, source provenance and hash. Eligibility uses only prior rolling complete observations and dollar liquidity; missing data excludes that asset; daily count/rank caps use historical liquidity. Listings/deletions and date gaps are tested across30 assets. Delisting holdings require explicit exit/recovery accounting; they cannot be silently zeroed.
+
+Authentic20–30-asset point-in-time listing/delisting archives and historical liquidity coverage are unavailable locally. Existing caches cover five audited daily assets and the original nine-asset study; inventing an expanded empirical backtest would be invalid. Implementation is complete and tested; empirical robustness awaits genuine data with historical provenance.
+
+Candidate freezing seals parameters, features, costs, risk, input hashes, code identity, universe, future observation start and unchanged thresholds. It rejects retrospective test release, requires future preregistration and create-once output. Qualification requires unique post-preregistration actual UTC decision dates,20 distinct completed simulated lifecycles, prospective public-feed provenance, reliability and independent review, Sharpe>=0.5 and drawdown<=0.15. Replay cannot satisfy elapsed observations. This is an operator-controlled evidence boundary, not a cryptographically authenticated independent auditor. Separate real-order approval always remains mandatory.
+
+Additional frozen acceptance rules preserve positive net and benchmark-relative returns, at least3positive assets, at least2positive neighbouring parameter results, at least30round trips, nonnegative return under doubled spread/slippage, a positive95%bootstrap lower bound on mean excess,99.5%completion, zero fault events and missing days, and at least29days elapsed. Missing criteria fail closed. These must be measured without tuning against prospective outcomes and do not imply present qualification.
+
+Preregistration history correction: task-local candidate files were overwritten while acceptance schema/source identity was tightened. This violated intended create-once history. The initial specification was reconstructed from generator code; unavailable intermediate bytes/timestamps are explicitly disclosed in research/extended/results_kraken_candidate/preregistration_history.json. Current final preregistration and unchanged single training evaluation remain preserved. These software corrections are not additional independent trials or untouched evidence. Future corrections must use versioned paths.

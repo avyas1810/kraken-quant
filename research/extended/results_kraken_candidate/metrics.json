@@ -1,0 +1,28 @@
+{
+  "strategy": {
+    "total_return": 4.612547776602724,
+    "annualized_volatility": 0.4679760113607628,
+    "sharpe": 1.3063267419528806,
+    "sortino": 2.336336659542192,
+    "max_drawdown": 0.5689990446940154,
+    "turnover": 152.26270643225502,
+    "trade_count": 1884,
+    "fees": 15468.047000068142,
+    "slippage_cost": 2974.6357577871004,
+    "spread_cost": 2974.6357577871004,
+    "financing_cost": 0.0
+  },
+  "benchmark": {
+    "total_return": 8.383517053163608,
+    "annualized_volatility": 0.892355960600334,
+    "sharpe": 1.1928925140305444,
+    "sortino": 1.724991698532685,
+    "max_drawdown": 0.9078410904844473,
+    "turnover": 0.16304478907697945,
+    "trade_count": 5,
+    "fees": 25.93257530680231,
+    "slippage_cost": 4.982051661185414,
+    "spread_cost": 4.982051661185414,
+    "financing_cost": 0.0
+  }
+}

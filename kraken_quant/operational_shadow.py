@@ -119,7 +119,8 @@ class OperationalShadowRunner(ShadowRunner):
                                  baseline_method="previous_utc_close", baseline_timestamp=now.normalize().isoformat())
                     self.gateway.connection.execute("UPDATE shadow_state SET body=? WHERE id=1", (canonical_json(state).decode(),))
             result = {"mode": "shadow", "status": "abandoned", "decision": decision} if cycle == ("abandoned",) else self.step()
-            quotes = {k: self.market_data.quote(k) for k in self.instruments}
+            quotes = (self.market_data.quotes(self.instruments) if hasattr(self.market_data, "quotes")
+                      else {k: self.market_data.quote(k) for k in self.instruments})
             now = utc_instant(self.clock())
             for key, quote in quotes.items():
                 if key != quote.instrument or not pd.Timedelta(0) <= now - quote.timestamp <= pd.Timedelta(seconds=5):

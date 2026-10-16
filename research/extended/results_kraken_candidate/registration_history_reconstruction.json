@@ -1,0 +1,66 @@
+{
+  "not_valid_preregistration": true,
+  "original_bytes_recovered": false,
+  "purpose": "Historical reconstruction from generator source; never usable as evidence, candidate identity or live authorisation.",
+  "reconstructed_specification": {
+    "acceptance_rules": {
+      "daily_decisions": 30,
+      "maximum_drawdown": 0.15,
+      "minimum_sharpe": 0.5,
+      "order_lifecycles": 20
+    },
+    "code_revision": "baseline-1587c70-plus-completion-strategy-source",
+    "costs": {
+      "cash_borrow_rate": 0.0,
+      "fee_rate": 0.0026,
+      "short_borrow_rate": 0.0,
+      "slippage_rate": 0.0005,
+      "spread_rate": 0.001
+    },
+    "data_limitation": "Binance USDT proxy; authentic Kraken prospective data still required",
+    "evaluation_split": "train",
+    "features": "Causal completed daily OHLCV; BTC trailing mean; trailing volatility; 30day momentum",
+    "input_hashes": {
+      "PX_ADA_USDT_1d.pk": "5b2023f5880044d0bc865b58f73b20677d7c42ea85d37a7b8cd3077a54f93243",
+      "PX_BTC_USDT_1d.pk": "f6bccc8b39351f1507750c25ab6c38549bfd8547f3eb71b2e8f2d9b82ea9e185",
+      "PX_ETH_USDT_1d.pk": "4b6b0d3f9abf112b94afa0c36b21a683a7c340a2174eb4122e7c701937c388c2",
+      "PX_SOL_USDT_1d.pk": "f80090940f562d252f9ff9bce14e988b7914bf661530fc0db7125091ea460871",
+      "PX_XRP_USDT_1d.pk": "d5123af6aef161a8737c78d148b4c7b1c9c154fb54eae454f406788ec882d137"
+    },
+    "parameters": {
+      "annual_vol_limit": 1.0,
+      "budget": 0.8,
+      "lookback": 30,
+      "regime_days": 60,
+      "volatility_days": 20
+    },
+    "prospective_start": "2026-10-17T00:00:00Z",
+    "protocol": "Prospective observations after preregistration only; no retrospective tuning",
+    "risk_limits": {
+      "long_only": true,
+      "max_daily_loss": 0.02,
+      "max_gross": 0.8,
+      "max_position_weight": 0.8
+    },
+    "strategy": "kraken_spot_multi_momentum_v1",
+    "test_access": "locked",
+    "universe": [
+      "BTC/USD",
+      "ETH/USD",
+      "XRP/USD",
+      "SOL/USD",
+      "ADA/USD"
+    ]
+  },
+  "derived_reconstruction_hash_not_original_receipt": "be288021aa7b9e66b3437a6d9fe96f813bc4939ad118542152c86e438278b29a",
+  "known_receipt_hashes": [
+    "635bbb535e23b5b11b8b9bdc06a837471c4945d356f30416f8e42a21b905994f"
+  ],
+  "unknown_fields": [
+    "Intermediate original frozen_at timestamps",
+    "Exact intermediate source hash snapshots",
+    "Exact deleted original bytes"
+  ],
+  "empirical_evaluations": 1,
+  "new_optimisation_trials": 0
+}

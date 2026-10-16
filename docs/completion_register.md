@@ -1,28 +1,33 @@
-# Remaining-work and completion register
+# Kraken Quant completion register
 
-Updated 2026-10-16. This register maps the original brief to evidence, rather than treating code presence as a completed trading outcome. Detailed history and ongoing updates live in the two cumulative logs.
+Updated 2026-10-16 after integrated acceptance. Earlier dated entries in `infrastructure_log.md` and `research_log.md` preserve the original project history; this register records final implementation status and remaining external evidence.
 
-| Original deliverable | Status | Evidence / next requirement |
+| Requirement | Final status | Evidence / dependency |
 | --- | --- | --- |
-| Reusable research/TWSQ foundation | Implemented and tested | Data/configuration, shared pipeline, funded/signed accounting, experiment registry and metrics. |
-| Historical study and reproducible outputs | Replayed and generated | Nine-asset frozen inputs, nine derived tables, manifest, reviewed rerun; original local data needed for independent replay. |
-| At least one properly validated deployable strategy | Not achieved | Current candidate has Sharpe0.37, drawdown30.04%, absolute intervals crossing zero; signed Binance construction differs from Kraken spot. Cannot manufacture a qualifying result. |
-| Draft paper, results and charts | Historical artifacts exist; current correction prepared | Updated statistical report and publication correction supersede old headline. Legacy PDF/DOCX/notebook/charts remain archival and must be read with the correction. |
-| Professional repository/docs | Local update prepared | Current README, runbook, logs and reviewed outputs. Public remote publication is a separate step; licensed implementation is not redistributable. |
-| Persistent Kraken shadow capability | Implemented and offline-tested; current public rehearsals halt | Fresh public spread events were unavailable within5 seconds in repeated rehearsals; feed readiness and sustained real observations with a frozen eligible candidate are still required. Flat safety probe has no alpha evidence. |
-| Recovery, precision, loss/exposure and duplicate controls | Implemented with synthetic fault drills | Real monitored operational acceptance is still needed. |
-| Account fees/permission verification | Adapter implemented, real verification pending | Dedicated read-only key/account configuration and coherent account snapshot. No private credentials loaded in this task. |
-| Risk-controlled live capability | Incomplete | No live transport; submitted-order reconciliation, partial fills, UNKNOWN recovery and dead-man transport remain absent. Existing read-only mirror is not a live broker. |
-| Live evidence/profitability | Not achieved | Requires future market observations and a qualified strategy; cannot be completed by tests or historical reinspection. |
+| Initial checkpoints, privacy and branches | Checkpoint pushed before code; final push pending | Private checkpoint `c1337da11d4267dedfc2c28cc3e487e659ecd389`; public checkpoint `8fec2652579dc31b1c0c3c87129d98923bc2d679`; branches `completion/end-to-end-platform-20261016` and `completion/reconciled-paper-20261016`. |
+| Frozen Phase 1/2 reproducibility | Passed | Nine result tables verified; 1,999 bootstrap draws and 999 placebo trials/method; raw return replay max error about1e-16; no frozen inputs or locked test changed/opened. |
+| Statistical audit and trial sensitivity | Implemented and documented | Accounting/timing/cost review, corrected DSR sensitivity, placebo distinctions, BTC HAC, train/OOS stability. 18 known correlated trials; complete historical count is unknown. |
+| Expanded point-in-time universe | Implementation/tests complete; empirical archive unavailable | Listing/delisting/known-at/liquidity/missingness/provenance/survivorship controls; 30-asset fixtures. Genuine broad historical instrument archive is missing. |
+| Execution realism | Sensitivity implementation complete | Nine fixed-notional cost/impact/liquidity/delay/financing scenarios; not an exchange queue model. Binance signed research remains separate from Kraken spot. |
+| Reusable strategy/backtest interface | Implemented and exercised | Custom strategy/feature factories, causal targets, backtest fills/accounting/costs/benchmarks/metrics/hash manifests, freeze/qualification CLI; two runnable examples. |
+| Kraken candidate | Evaluated; not qualified | Separate five-asset candidate SHA `d60807ad8c61d47bce517f29ecbd237b2a7107965c8459024d992d4371cfc3f5`; training-only Sharpe1.3063, return+461.25%, drawdown56.90%; fails unchanged15% limit. No OOS tuning. Preregistration-history incident fully disclosed in research log. |
+| WebSocket event-time feed | Implemented; stale Spread blocker resolved | Current public BTC diagnostic plus a genuine five-asset flat decision succeeded with fresh exchange BBO event times; no crossed/stale quotes, zero fills/faults. Feed channel has no documented sequence ID. |
+| Persistent paper/replay/evidence | Implemented and tested | Paper lifecycle persistence, fees/risk, dedupe, restart/recovery, halt/resume, inspection/export, backup/restore and candidate-hash evidence. Fresh isolated public flat database:1 actual daily decision,0/20 lifecycles. |
+| Live Kraken transport | Implemented, default-disabled, simulated end-to-end | Signed simulated transport, partial fills/reconciliation, UNKNOWN/lost ACK, dedupe/restart, risk/kill/stale/funds/dead-man covered. No real submission occurred; separate approval remains mandatory and current candidate is ineligible. |
+| Operations/monitoring | Implemented and mocked/fault tested | Health, stopped-process detection, recovery, watchdog and optional HTTPS alerts. No alert recipient configured. Dedicated account credentials are absent; no account verification is claimed. |
+| Windows-first operator manual | Markdown/PDF complete | `docs/STRATEGY_RESEARCH_AND_TRADING_SOP.md` and `.pdf`; examples run. PDF visually reviewed. Public paper DOCX received structural/numeric checks; visual Word/LibreOffice renderer is unavailable. |
+| Current independent paper and figures | Built and numerically verified | Current public PDF, DOCX, Markdown and three charts; headline values reconcile at 0.3717 / +12.0116% / -30.0367%. Publication tests3 passed. Independent human review remains outstanding. |
+| Full tests / static / frozen artifact checks | Passed | Private suite318 passed in31.50s; public suite3 passed; phase2 result verifier passed; tutorial, simulation, recovery, PDF and numerical checks passed. |
+| Final implementation/publication commits and remote CI | Pending at time of this register edit | Review diff/secret boundaries, commit on completion branches, push and verify remote SHAs. No force-push. |
 
-## Ordered continuation
+## Only outstanding external or future-evidence requirements
 
-1. Preserve a verified local Phase2/reporting checkpoint, including these logs and corrections.
-2. Have the generated evidence independently reviewed. Effective strategy-trial count remains unknown; no DSR sensitivity resolves that missing history.
-3. Register a fresh, causal, long-only Kraken-compatible hypothesis and training/validation acceptance plan. Keep the recovered historical study immutable. Do not silently transform its signed strategy into another candidate.
-4. Fit/select only using authorized training/validation; freeze parameters, features, sources, costs and promotion protocol before any new holdout/prospective observation. Reject failures without tuning on the inspected OOS.
-5. Run supervised prospective shadow collection and review actual decisions/lifecycles, costs, faults and reliability over the required elapsed period. At least30 daily decisions cannot be completed in one session.
-6. Complete live transport/lifecycle reconciliation only with the qualified research specification and account constraints in hand; keep real submissions disabled until review, account checks, operational drills and explicit user approval.
-7. Publish the independently redistributable correction, with archival results clearly identified. Never push this licensed implementation as public source.
+- Allow >=29 elapsed days and collect >=30 actual daily shadow decisions plus >=20 distinct actual paper order lifecycles for a frozen candidate. One genuine flat decision and accelerated replays do not satisfy this.
+- A statistically qualified candidate; the current candidate fails the existing drawdown threshold and must not be promoted.
+- Authentic broad point-in-time 20-30+ asset archive and complete original experiment log for stronger universe/trial claims.
+- Dedicated read-only/trading credentials and real identity, permissions, fees, balances, open-order and market-rule verification; no such credentials were available.
+- An external independent second-person review and configured external alert recipient if operational alert delivery is required.
+- Separate explicit operator authorisation before any first real-money order. The implementation remains disabled by default. No withdrawals, transfers or funding were implemented or performed.
+- Visual DOCX rendering in Word/LibreOffice could not be run because neither renderer is installed; document structure, letter page size, table geometry and numerical values were verified programmatically.
 
-The user's instruction to finish remaining work authorizes implementation and preparation. It does not erase the original requirement for explicit approval of a live order or turn failed research evidence into a successful strategy. Current unfinished items remain open; this document is not a completion claim.
+The completion mandate is complete for implementable local engineering, research tooling, operator documentation and reproducible publication artifacts once the final branch commits are pushed. Future market evidence, unavailable private account verification and explicit first-order approval are not represented as completed.

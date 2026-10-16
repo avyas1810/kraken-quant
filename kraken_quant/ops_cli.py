@@ -11,7 +11,8 @@ import pandas as pd
 from .config import CONFIG
 from .credentials import readonly_from_env
 from .data import utc_instant
-from .operational_data import EventTimeMarketData
+from .evidence import bind_candidate, candidate_pipeline
+from .streaming import WebSocketMarketData
 from .operational_shadow import OperationalShadowRunner, pin_exchange_baseline
 from .operations import Operations, ProcessLock
 from .shadow_cli import FlatStrategy
@@ -28,9 +29,11 @@ def main(argv=None, *, market_data=None, clock=lambda: pd.Timestamp.now(tz="UTC"
     parser.add_argument("--database", required=True)
     parser.add_argument("--start", help="Daily UTC history start after the locked dataset")
     parser.add_argument("--symbol", choices=CONFIG.universe, default=CONFIG.universe[0])
+    parser.add_argument("--symbols", nargs="+", choices=CONFIG.universe, help="Explicit multi-asset spot universe")
     parser.add_argument("--strategy-id", default="flat-safety-v1")
     parser.add_argument("--strategy", help="Trusted module:factory -> StrategyPipeline")
-    parser.add_argument("--fee-rate", default="0.004", help="Scenario fee if private read-only adapter is not configured")
+    parser.add_argument("--candidate", help="Hash-sealed candidate; binds exact strategy, parameters, universe and fee scenario")
+    parser.add_argument("--fee-rate", help="Scenario fee if private read-only adapter is not configured; default0.004")
     parser.add_argument("--env-file", help="Explicit opt-in to dedicated read-only credentials; never a trading key")
     parser.add_argument("--reason", help="Audited operator reason for state-changing controls")
     parser.add_argument("--duration-days", type=float, default=7)
@@ -43,13 +46,30 @@ def main(argv=None, *, market_data=None, clock=lambda: pd.Timestamp.now(tz="UTC"
             parser.error("--duration-days must be in (0,365]")
         database.parent.mkdir(parents=True, exist_ok=True)
         pipeline = StrategyPipeline(FlatStrategy())
+        binding = None
+        fee_rate = args.fee_rate or "0.004"
+        if args.candidate:
+            if args.strategy:
+                parser.error("--candidate cannot be overridden with --strategy")
+            pipeline, binding = candidate_pipeline(args.candidate, now=clock())
+            frozen_fee = str(binding["specification"]["costs"]["fee_rate"])
+            if args.fee_rate is not None and float(args.fee_rate) != float(frozen_fee):
+                parser.error("--fee-rate differs from frozen candidate")
+            fee_rate = frozen_fee
+            args.strategy_id = binding["candidate_sha256"]
         if args.strategy:
             module, factory = args.strategy.split(":", 1)
             pipeline = getattr(importlib.import_module(module), factory)()
-        key = Instrument("kraken", args.symbol, *args.symbol.split("/"))
-        runner = OperationalShadowRunner(pipeline, market_data or EventTimeMarketData(clock=clock), database,
-            instruments=[key], start=args.start, strategy_id=args.strategy_id, fee_rate=args.fee_rate, clock=clock)
+        symbols = binding["specification"]["universe"] if binding else (args.symbols or [args.symbol])
+        if binding and args.symbols and set(args.symbols) != set(symbols):
+            parser.error("--symbols differs from frozen candidate")
+        keys = [Instrument("kraken", symbol, *symbol.split("/")) for symbol in symbols]
+        source = market_data or WebSocketMarketData(clock=clock)
+        runner = OperationalShadowRunner(pipeline, source, database,
+            instruments=keys, start=args.start, strategy_id=args.strategy_id, fee_rate=fee_rate, clock=clock)
         try:
+            if binding is not None:
+                bind_candidate(runner.ops, binding)
             if args.env_file:
                 runner.readonly = readonly_from_env(args.env_file, clock=clock, nonce=runner.ops.nonce)
             deadline = time.monotonic() + args.duration_days * 86400
@@ -69,6 +89,8 @@ def main(argv=None, *, market_data=None, clock=lambda: pd.Timestamp.now(tz="UTC"
             return 0
         finally:
             runner.close()
+            if hasattr(source, "close"):
+                source.close()
     lock = None
     if args.command in {"resume", "recover", "pin-exchange"}:
         lock = ProcessLock(database)
