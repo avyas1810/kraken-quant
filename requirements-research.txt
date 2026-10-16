@@ -1,0 +1,3 @@
+# Additional statistical dependencies; core test dependencies in requirements-ci.txt.
+scipy==1.15.3
+statsmodels==0.15.0

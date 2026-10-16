@@ -1,0 +1,7 @@
+# Preserve exact bytes for hash-frozen research artifacts on every platform.
+research/phase1_frozen/** -text whitespace=cr-at-eol
+phase2_results/** -text whitespace=cr-at-eol
+# Statistical source has a deterministic LF convention.
+research/phase2/** text eol=lf
+research/__init__.py text eol=lf
+docs/phase2* text eol=lf

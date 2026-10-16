@@ -1,0 +1,171 @@
+{
+  "annualisation": 2190,
+  "batch_accounting_verification": {
+    "absolute_tolerance": 1e-12,
+    "cache_sha256": "7f4e730926223fe16ee5ca49363b770c5f8d6b352809d1a8deaafc11467ea697",
+    "mask_sha256": "b290758123e15c830249860ea3f48a7aa9d358ca30f831850b5dcc3890825584",
+    "observed_max_absolute_errors": {
+      "gross_exposure": 3.3306690738754696e-16,
+      "gross_return": 1.5612511283791264e-17,
+      "net_return": 4.440892098500626e-16,
+      "turnover": 4.440892098500626e-16
+    },
+    "solver_iterations": 55,
+    "source": "same frozen Phase 1 equations; only independent trial axis vectorised",
+    "trials_including_observed": 1999
+  },
+  "checkpoint_sha": "dfd05382fedc0a2544bec413c615fa718f384776",
+  "code_commit": "58249f2320bec4b086546b534b64ce192a0ee852",
+  "conclusion": "requires_independent_review_of_generated_evidence",
+  "cost_per_gross_dollar": 0.002,
+  "coverage": {
+    "daily": {
+      "assets": [
+        "ADA-USD",
+        "AVAX-USD",
+        "BNB-USD",
+        "BTC-USD",
+        "DOGE-USD",
+        "ETH-USD",
+        "LINK-USD",
+        "XLM-USD",
+        "XRP-USD"
+      ],
+      "first_gap_after": "2020-09-22 00:00:00",
+      "frequency": "daily",
+      "irregular_intervals": 1,
+      "last_gap_after": "2020-09-22 00:00:00",
+      "missing_rows": 628,
+      "rows_after": 2103,
+      "rows_before": 2734,
+      "rows_discarded_before_continuous_suffix": 2
+    },
+    "four_hour": {
+      "assets": [
+        "ADAUSDT",
+        "AVAXUSDT",
+        "BNBUSDT",
+        "BTCUSDT",
+        "DOGEUSDT",
+        "ETHUSDT",
+        "LINKUSDT",
+        "XLMUSDT",
+        "XRPUSDT"
+      ],
+      "first_gap_after": "2020-12-21 19:59:59.999000",
+      "frequency": "4h",
+      "irregular_intervals": 6,
+      "last_gap_after": "2021-09-29 11:59:59.999000",
+      "missing_rows": 3810,
+      "rows_after": 10389,
+      "rows_before": 16430,
+      "rows_discarded_before_continuous_suffix": 2230
+    },
+    "full_end": "2026-06-26T23:59:59.999000+00:00",
+    "full_start": "2021-09-29T15:59:59.999000+00:00",
+    "net_reconciliation_max_absolute_error": {
+      "4h_mom_low_correlation": 9.974659986866641e-17,
+      "4h_momentum": 9.996344030316351e-17
+    },
+    "oos_end": "2026-06-26T23:59:59.999000+00:00",
+    "oos_start": "2024-01-01T03:59:59.999000+00:00",
+    "train_end": "2023-12-31T23:59:59.999000+00:00"
+  },
+  "dependencies": {
+    "numpy": "1.24.3",
+    "pandas": "2.0.1",
+    "python": "3.10.11",
+    "scipy": "1.15.3",
+    "statsmodels": "0.15.0"
+  },
+  "dsr_dispersion_assumptions": [
+    "iid_gaussian_null_reference_not_empirical_registry",
+    "recorded_18_oos_strategies_correlated_incomplete",
+    "recorded_18_training_strategies_correlated_incomplete"
+  ],
+  "ess_interpretation": "initial-positive-autocorrelation mean heuristic; full N is not evidence of independence",
+  "frozen_artifact_hashes": {
+    "4h_net_returns.csv": "14780b77dac5480c74ac894ea9539a42ba03301b519838f247391f8e820b57f9",
+    "binance_4h_raw.pkl": "b0a6074e2a8f8a92e00dfc6a534f4ec43c9b0d808e4b2059442001816b72e31a",
+    "daily_raw.pkl": "f4f1ad8fe49d359368f580daf96d5ca80c243f25ee110c2675a7df2efc214379",
+    "frozen_source_cells": "a376dfb42f60acd516935c9418c8f611c2e744bb807d118623748f2541e51b42",
+    "original_phase1_manifest": "996bb79a82bd686db5c92428b70d97eb078ee4020027bd4100aa365888b009e3"
+  },
+  "gross_return_status": "available",
+  "oos_status": "already_inspected_not_pristine",
+  "output_hashes": {
+    "bootstrap_robustness.csv": "0167976222f54adb0f149e382c58b1b60354f799e6f6379985b9722c1cb01227",
+    "btc_hac_sensitivity.csv": "4c34022d770be4b27a7dd8904ee486eb9691e8828f81a7a49afe9e813eec2026",
+    "dsr_corrected.csv": "5a5dfba69c6e5c237a39e263944e4c1341065d2825eafef29dfdcc41f5404720",
+    "period_concentration.csv": "4f197d1cf8175017362ae64313781ec9f8fd5bf08f208f998c5a364ef1ceb30a",
+    "placebo_balance_diagnostics.csv": "19b1db8ff33874793e171b6b1aea08682c566e15aaa89aa46c6d04f2e10e151c",
+    "placebo_distributions.csv": "533966311b6d6648060da1b30e6255460825acaed12a046cfad711910db8e707",
+    "placebo_robustness.csv": "712c8d14a9ef7b638ff4d1a4eb5745bb565b72e75bfc775c16ae7972aaaa3b04",
+    "positive_return_sensitivity.csv": "0bd5fbbb70ec9202268006393ac7ac3727c5cfc923b654d0d44ef6ba2762a7fa",
+    "train_oos_stability.csv": "afba61a4db717f5da48f0a459dbe8619c8a2ad18a6f5ddd130629decc504fe82"
+  },
+  "phase1_manifest_sha256": "996bb79a82bd686db5c92428b70d97eb078ee4020027bd4100aa365888b009e3",
+  "placebo": {
+    "exposure_tolerance": 0.05,
+    "interpretation": "historical conditional randomisation; not a trading strategy",
+    "periods_per_year": 2190,
+    "seed": 20261015,
+    "trials_per_method": 999,
+    "turnover_tolerance": 0.1
+  },
+  "placebo_observed": {
+    "cumulative_return": 0.12011609612134277,
+    "gross_exposure": 0.2725770925110132,
+    "max_drawdown": -0.30036652018682675,
+    "net_sharpe": 0.3716717128673308,
+    "turnover": 181.71053110035783
+  },
+  "regime_activity": [
+    {
+      "active_fraction": 0.2920461445051609,
+      "observations": 4941,
+      "split": "train"
+    },
+    {
+      "active_fraction": 0.2725770925110132,
+      "observations": 5448,
+      "split": "oos"
+    }
+  ],
+  "replay_absolute_tolerance": 1e-12,
+  "sample_end": "2026-06-26T23:59:59.999000+00:00",
+  "sample_start": "2021-09-29T15:59:59.999000+00:00",
+  "schema_version": 1,
+  "seeds": {
+    "bootstrap": 20261014,
+    "placebo": 20261015
+  },
+  "source_hashes": {
+    "__init__.py": "cd780014ffc0697d891268f2f430b6795b4d1ca1ef7134028e3b64416582e2c6",
+    "bootstrap.py": "dd04e989e4ab5af160332c000508faf2d026e248ec1dc1d2652677ed561a4209",
+    "btc_regression.py": "243d5b5cd41b38739a1d96c4c0b5ce1d64f9f889c97c14fe74246bba5c3247b1",
+    "common.py": "5586ede95f244c19a5c38ac5a1f94a17056e71659517c961802205290e598424",
+    "dsr.py": "9cdcff02af20881e6fe0a72d684fb9d62577cab13b0f95adbb31afa09ffae928",
+    "freeze_notebooks.py": "0fcd7208a4a94bed76780aa93a34be41d850bd11f7d156c88c549477583b6e57",
+    "frozen_accounting.py": "bda29d4e9a73fa998e34c0834dd2a07267df982cbade052e6a33bf0367743c83",
+    "original_study.py": "7fdad62bcd06e2355ad9e0893a640b7b8ae9e0542e389dba5b016423d5838d5c",
+    "original_validation.py": "a4c071cf950164d0a76cb79f5424aad6811d859da58999d5adc5d1ac02200f92",
+    "placebo.py": "97a5e7e1ec9cc1d080d202525d949b88f623b72a08fdd130c09788c63ae58379",
+    "run_validation.py": "004e0b6d18d0b811f056f53634877b13dc3d5564b80bccf283b3e876ed611776",
+    "stability.py": "458eb9dffa484db02c6e873b4be606d0b5904995580df64e8468d347b1c46aed",
+    "verify_results.py": "1f99b449c2d7dacc03d7fea7dec982c898d6ec4f2d2d3973f7661fe6d700bb25"
+  },
+  "splits": {
+    "oos": {
+      "end": "2026-06-26T23:59:59.999000+00:00",
+      "start": "2024-01-01T03:59:59.999000+00:00"
+    },
+    "train": {
+      "end": "2023-12-31T23:59:59.999000+00:00",
+      "start": "2021-09-29T15:59:59.999000+00:00"
+    }
+  },
+  "status": "historical_validation_completed",
+  "supplemental_checkpoint_sha": "58249f2320bec4b086546b534b64ce192a0ee852",
+  "trial_dispersion_provenance": "sample standard deviation of 18 correlated tried strategies; incomplete registry, not independent trials"
+}

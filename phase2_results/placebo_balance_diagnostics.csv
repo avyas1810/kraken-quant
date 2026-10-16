@@ -1,0 +1,3 @@
+method,trials,accepted,active_fraction,exposure_relative_gap_mean,exposure_relative_gap_min,exposure_relative_gap_max,turnover_relative_gap_mean,turnover_relative_gap_min,turnover_relative_gap_max,identical_masks,status
+run_length_permutation,999,761,0.2725770925110132,0,0,0,0.043350589245115721,-0.1562821642905233,0.30890706462305262,0,inspect_matching_imbalance
+circular_shift,999,740,0.2725770925110132,-0.00018402240624460208,-0.00067340067340057683,0,0.044734661353036921,-0.11863165246284928,0.20918554505507966,0,inspect_matching_imbalance

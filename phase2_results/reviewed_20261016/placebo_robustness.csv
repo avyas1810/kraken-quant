@@ -1,0 +1,13 @@
+method,balance_conditioned,metric,observed,trials,status,p_one_sided
+run_length_permutation,False,net_sharpe,0.37167171286733081,999,ok,0.027
+run_length_permutation,False,cumulative_return,0.12011609612134277,999,ok,0.024
+run_length_permutation,False,max_drawdown,-0.30036652018682675,999,ok,0.36399999999999999
+run_length_permutation,True,net_sharpe,0.37167171286733081,761,limited_monte_carlo_precision,0.028871391076115485
+run_length_permutation,True,cumulative_return,0.12011609612134277,761,limited_monte_carlo_precision,0.026246719160104987
+run_length_permutation,True,max_drawdown,-0.30036652018682675,761,limited_monte_carlo_precision,0.42782152230971127
+circular_shift,False,net_sharpe,0.37167171286733081,999,ok,0.017999999999999999
+circular_shift,False,cumulative_return,0.12011609612134277,999,ok,0.017999999999999999
+circular_shift,False,max_drawdown,-0.30036652018682675,999,ok,0.35099999999999998
+circular_shift,True,net_sharpe,0.37167171286733081,740,limited_monte_carlo_precision,0.024291497975708502
+circular_shift,True,cumulative_return,0.12011609612134277,740,limited_monte_carlo_precision,0.024291497975708502
+circular_shift,True,max_drawdown,-0.30036652018682675,740,limited_monte_carlo_precision,0.42780026990553305

@@ -8,3 +8,5 @@ dist/
 *.egg-info/
 MyTWSQ/
 .shadow-runtime/
+research_data_cache/
+.phase2-cache/
