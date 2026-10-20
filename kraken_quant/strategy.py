@@ -93,7 +93,7 @@ class StrategyPipeline:
             raise TypeError("Strategy must implement target_weights(context)")
         self.strategy, self.feature_builder = strategy, feature_builder
 
-    def evaluate(self, *, timestamp, historical_data, positions, cash, equity):
+    def evaluate(self, *, timestamp, historical_data, positions, cash, equity, bar_ends=None):
         timestamp = utc_instant(timestamp)
         copied = {}
         for key, frame in historical_data.items():
@@ -101,7 +101,10 @@ class StrategyPipeline:
                 raise ValueError("Expected nonempty instrument history")
             if not isinstance(frame.index, pd.DatetimeIndex) or frame.index.tz is None:
                 raise ValueError("History timestamps must be timezone-aware")
-            if (frame.index + DAY > timestamp).any():
+            ends = frame.index + DAY if bar_ends is None else pd.DatetimeIndex(bar_ends[key])
+            if len(ends) != len(frame) or ends.tz is None or (ends <= frame.index).any():
+                raise ValueError("Invalid completed-bar boundaries")
+            if (ends > timestamp).any():
                 raise PermissionError("Feature/strategy history contains future or unfinished bars")
             copied[key] = frame.copy(deep=True)
         features = None

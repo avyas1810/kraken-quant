@@ -20,14 +20,21 @@ This signed Binance/USDT study is separate from the five-asset daily Kraken/USD 
 
 ## Verification
 
-The [Quant Kraken research notebook](notebooks/quant_kraken_research.ipynb) runs
-offline with synthetic inputs by default. It integrates registered experiments,
-the shared strategy pipeline, cost-matched benchmarks, sensitivity tables and
-equity/drawdown charts. Synthetic outputs are mechanics checks, not findings.
-Install `requirements-notebook.txt` alongside the test/research requirements,
-then open the notebook in Jupyter and run all cells. Repository-local validated
-snapshot inputs can be configured in its input cell; test access stays locked.
-Runtime trial records and optional result artifacts use ignored `.notebook-runtime/`.
+The [Quant Kraken research notebook](notebooks/quant_kraken_research.ipynb)
+retrieves genuine Coinbase crypto spot history by default. Configure any supported
+asset selection, one of six timeframes, a strategy factory and explicit costs,
+then run all cells. Its shared AUD portfolio ledger supports costed long/short
+research scenarios, covariance Kelly, hard risk limits, chronological validation,
+net dashboards and historical next-allocation recommendations. Unsupported
+asset classes/calendars and missing material costs fail explicitly. Final holdout
+access remains locked; live routing is not implemented.
+
+Install `requirements-notebook.txt` alongside the test/research requirements.
+Run `python examples/execute_research_notebook.py` for a clean-kernel real-data
+run, or add `--fixture` for explicit offline integration verification. Fixtures
+never replace failed provider requests. Data caches, trial registrations,
+immutable ledger exports and charts stay in ignored `.notebook-runtime/`.
+See [the framework contract and limitations](docs/general_research_framework.md).
 
 Use Python 3.10 with dependencies in `requirements-ci.txt` and `requirements-research.txt`.
 
