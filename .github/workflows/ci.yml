@@ -17,7 +17,7 @@ jobs:
       - name: All tests (synthetic and mocked, no exchange keys)
         run: python -m pytest -q tests
       - name: Research notebook clean-kernel offline integration
-        run: python examples/execute_research_notebook.py --fixture
+        run: python examples/execute_research_notebook.py --notebook "notebooks/First trial.ipynb" --fixture
       - name: Verify current historical result artifacts (no raw inputs required)
         run: python -m research.phase2.verify_results --results phase2_results/reviewed_20261016
       - name: Compile every tracked Python source without writing repository bytecode

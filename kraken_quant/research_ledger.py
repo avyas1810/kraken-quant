@@ -8,7 +8,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from .research_market import research_interval, OHLCV
+from .research_market import research_interval, OHLCV, validate_selection
 from .research_sizing import PortfolioLimits, constrain
 from .strategy import StrategyPipeline
 
@@ -62,6 +62,7 @@ def scenario_costs():
 
 
 def validate_panel(bars, assets):
+    validate_selection(assets)
     keys = [a.instrument for a in assets]
     if not keys or len(set(keys)) != len(keys) or set(keys) != set(bars):
         raise ValueError('Unique selected assets must exactly match price inputs')

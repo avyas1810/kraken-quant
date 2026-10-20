@@ -22,6 +22,13 @@ OHLCV = ['open', 'high', 'low', 'close', 'volume']
 TIMEFRAMES = ('4h', '8h', '16h', '24h', 'weekly', 'monthly')
 
 
+def validate_selection(selected):
+    if not 1 <= len(selected) <= 50:
+        raise ValueError('Select between 1 and 50 assets')
+    if len({a.instrument for a in selected}) != len(selected):
+        raise ValueError('Select unique instruments; duplicate assets share the same position')
+
+
 def research_interval(start, end):
     start, end = utc_instant(start), utc_instant(end)
     if start < CONFIG.data_start or end <= start:
@@ -240,8 +247,7 @@ def historical_fx(quote_currency, base_currency, timestamps, cache, transport=fe
 
 
 def load_market(selected, start, end, timeframe, cache, *, base_currency='AUD', provider=None):
-    if not selected or len({a.instrument for a in selected}) != len(selected):
-        raise ValueError('Select one or more unique instruments; no fixed universe size')
+    validate_selection(selected)
     research_interval(start, end)
     provider = CoinbaseHistory(cache) if provider is None else provider
     bars, manifests = {}, {}

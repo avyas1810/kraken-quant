@@ -20,6 +20,18 @@ This signed Binance/USDT study is separate from the five-asset daily Kraken/USD 
 
 ## Verification
 
+The audited [First trial notebook](notebooks/First%20trial.ipynb) preserves the
+original research notebook and adds automatically executed, nonzero long/short
+acceptance portfolios and an isolated dry-run through the existing production
+risk boundary. Run it from a fresh kernel with:
+
+```powershell
+python examples/execute_research_notebook.py --notebook "notebooks/First trial.ipynb"
+```
+
+Add `--fixture` for offline verification. See [its compliance report](docs/first_trial_compliance.md)
+for tested scope and limitations. No live orders are submitted.
+
 The [Quant Kraken research notebook](notebooks/quant_kraken_research.ipynb)
 retrieves genuine Coinbase crypto spot history by default. Configure any supported
 asset selection, one of six timeframes, a strategy factory and explicit costs,
