@@ -10,3 +10,5 @@ MyTWSQ/
 .shadow-runtime/
 research_data_cache/
 .phase2-cache/
+.notebook-runtime/
+.ipynb_checkpoints/

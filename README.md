@@ -20,6 +20,15 @@ This signed Binance/USDT study is separate from the five-asset daily Kraken/USD 
 
 ## Verification
 
+The [Quant Kraken research notebook](notebooks/quant_kraken_research.ipynb) runs
+offline with synthetic inputs by default. It integrates registered experiments,
+the shared strategy pipeline, cost-matched benchmarks, sensitivity tables and
+equity/drawdown charts. Synthetic outputs are mechanics checks, not findings.
+Install `requirements-notebook.txt` alongside the test/research requirements,
+then open the notebook in Jupyter and run all cells. Repository-local validated
+snapshot inputs can be configured in its input cell; test access stays locked.
+Runtime trial records and optional result artifacts use ignored `.notebook-runtime/`.
+
 Use Python 3.10 with dependencies in `requirements-ci.txt` and `requirements-research.txt`.
 
 ```powershell

@@ -1,0 +1,5 @@
+# Install alongside requirements-ci.txt and requirements-research.txt.
+nbformat>=5.10,<6
+nbclient>=0.10,<1
+ipykernel>=6.29,<7
+matplotlib>=3.7,<3.11
