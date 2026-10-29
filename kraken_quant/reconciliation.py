@@ -67,6 +67,7 @@ class ReadOnlyKraken:
             raise ValueError("Account identity required")
         self._request, self.account_fingerprint, self.clock = request, account_fingerprint, clock
         self.pair_ids = {}
+        self.pair_resolver = None
 
     def _read(self, endpoint, params=None):
         if endpoint not in READ_ENDPOINTS:
@@ -86,7 +87,10 @@ class ReadOnlyKraken:
         spot_only(instrument)
         self.permissions()
         stamp = utc_instant(self.clock())
-        pair_id = self.pair_ids.get(instrument, instrument.symbol)
+        pair_id = self.pair_ids.get(instrument)
+        if pair_id is None:
+            pair_id = self.pair_resolver(instrument) if self.pair_resolver else instrument.symbol
+            self.pair_ids[instrument] = pair_id
         row = self._read("TradeVolume", {"pair": pair_id})
         # Some private endpoints still use internal pair IDs. Require explicit
         # canonical pair response; do not guess a fee for a different pair.
