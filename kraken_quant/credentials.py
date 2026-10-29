@@ -28,13 +28,18 @@ def readonly_from_env(path, *, clock, nonce):
 
     adapter = ReadOnlyKraken(request, fingerprint, clock=clock)
     adapter.permissions()  # Fail closed before querying other private data.
-    # ccxt's verified public market map binds internal IDs to canonical symbols.
-    try:
-        client.load_markets()
-        from .strategy import Instrument
-        from .config import CONFIG
-        adapter.pair_ids = {Instrument("kraken", symbol, *symbol.split("/")): client.market(symbol)["id"]
-                            for symbol in CONFIG.universe}
-    except Exception:
-        raise RuntimeError("Public instrument identity lookup failed") from None
+    # Authentication and balances do not need a research universe or market map.
+    # Resolve only a caller-requested fee instrument, lazily.
+    def resolve_pair(instrument):
+        try:
+            client.load_markets()
+            market = client.market(instrument.symbol)
+            if (instrument.venue != "kraken" or instrument.market_type != "spot"
+                    or not market.get("spot") or market.get("symbol") != instrument.symbol
+                    or market.get("base") != instrument.base or market.get("quote") != instrument.quote):
+                raise ValueError("Instrument identity mismatch")
+            return market["id"]
+        except Exception:
+            raise RuntimeError("Public instrument identity lookup failed") from None
+    adapter.pair_resolver = resolve_pair
     return adapter
