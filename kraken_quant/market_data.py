@@ -12,7 +12,7 @@ from .risk import InstrumentRules, Quote, money, spot_only
 
 
 def public_get(endpoint, params):
-    if endpoint not in {"OHLC", "Ticker", "AssetPairs", "Assets"}:
+    if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets"}:
         raise PermissionError("Only public market-data endpoints are allowed")
     url = "https://api.kraken.com/0/public/" + endpoint + "?" + urlencode(params)
     with urlopen(url, timeout=10) as response:
