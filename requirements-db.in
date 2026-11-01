@@ -1,0 +1,5 @@
+# Python 3.11 database-environment profile; reuse the existing test/research stack.
+-r requirements-ci.txt
+-r requirements-research.txt
+-r requirements-notebook.txt
+pyarrow==19.0.1

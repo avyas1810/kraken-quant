@@ -12,3 +12,14 @@ research_data_cache/
 .phase2-cache/
 .notebook-runtime/
 .ipynb_checkpoints/
+
+# Database environment, generated local storage and lock/build caches
+.venv-db/
+/data/
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.parquet
