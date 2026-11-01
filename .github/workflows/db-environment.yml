@@ -1,0 +1,21 @@
+name: Database environment (Python 3.11)
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  database-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-db.lock
+      - run: python -m pip install --require-hashes -r requirements-db.lock
+      - name: Full offline suite
+        run: python -m pytest -q tests
+      - name: Temporary storage and dependency diagnostic (no network or keys)
+        run: python -m kraken_quant.db_environment --offline
