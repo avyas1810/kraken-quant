@@ -11,11 +11,19 @@ from .data import COLUMNS, DAY, utc_instant, validate_bars
 from .risk import InstrumentRules, Quote, money, spot_only
 
 
-def public_get(endpoint, params):
-    if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets"}:
+def public_get(endpoint, params, *, exact_numbers=False):
+    if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets", "FeeSchedule"}:
         raise PermissionError("Only public market-data endpoints are allowed")
     url = "https://api.kraken.com/0/public/" + endpoint + "?" + urlencode(params)
+    if endpoint == "FeeSchedule":
+        from urllib.request import Request
+        url = Request("https://www.kraken.com/features/fee-schedule", headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(url, timeout=10) as response:
+        if endpoint == "FeeSchedule":
+            return {"url": "https://www.kraken.com/features/fee-schedule", "html": response.read().decode("utf-8")}
+        if exact_numbers:
+            from decimal import Decimal
+            return json.load(response, parse_float=Decimal)
         return json.load(response)
 
 
