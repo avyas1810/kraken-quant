@@ -15,7 +15,7 @@ from kraken_quant.eligibility_filters import *
 from kraken_quant.eligibility_evidence import PointInTimeEvidence,resolve_input_reference
 from kraken_quant.metadata_store import connect_metadata
 from kraken_quant.cost_storage import payload,digest
-from kraken_quant.ohlcv_collector import sql_time,minute_start
+from kraken_quant.ohlcv_collector import sql_time,minute_start,read_time
 
 @pytest.fixture
 def env(data_dir):
@@ -361,3 +361,26 @@ def test_corrupt_source_namespace_is_unknown(env):
     (root/'ohlcv_collection/source.json').write_text('{broken')
     item=manager.evaluate(pair='BTC-AUD')['markets'][0]
     assert item['history']['error']=='price_source_provenance_missing'
+
+
+@pytest.mark.parametrize('legacy',[False,True])
+def test_verify_pins_original_selection_after_later_persistence(env,legacy):
+    root,clock,manager,_=env
+    from test_ohlcv_collector import candle
+    receipt=next((root/'ohlcv_collection/responses/BTC-AUD').glob('*.json'))
+    doc=json.loads(receipt.read_text());result=doc['body']['result'];key=next(k for k in result if k!='last')
+    stamp=minute_start(clock())-timedelta(minutes=10)
+    result[key].insert(0,candle(stamp));receipt.write_text(json.dumps(doc))
+    # The original response contained this completed row, but an earlier bounded
+    # ingestion had not persisted it. This must not enlarge an immutable report.
+    report=manager.evaluate(pair='BTC-AUD')
+    assert report['markets'][0]['history']['known_minutes']==3
+    if legacy:report['markets'][0]['history'].pop('selection_intervals')
+    saved=manager.persist(report)
+    from kraken_quant.ohlcv_collector import parse_ohlc
+    record=next(r for r in parse_ohlc(doc['body'],report['markets'][0]['metadata'],read_time(doc['fetched_at']))['records'] if r['timestamp']==stamp)
+    from kraken_quant.parquet_store import MonthlyParquetStore
+    clock.sleep(10);MonthlyParquetStore(root).write('prices_1m',[record])
+    assert manager.evaluate(as_of=read_time(report['as_of']),pair='BTC-AUD')['markets'][0]['history']['known_minutes']==4
+    assert manager.verify_evidence(saved['report_id'])['status']=='verified'
+    assert manager.load(saved['report_id'])['evaluation']==report

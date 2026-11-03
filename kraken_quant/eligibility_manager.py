@@ -40,12 +40,12 @@ class EligibilityManager:
     def __init__(self,data_dir,*,clock=lambda:datetime.now(timezone.utc)):
         self.data_dir=Path(data_dir);self.root=self.data_dir/'eligibility_screening';self.clock=clock
 
-    def evaluate(self,*,as_of=None,policy=ScreeningPolicy(),pair=None,all_aud=False):
+    def evaluate(self,*,as_of=None,policy=ScreeningPolicy(),pair=None,all_aud=False,_history_pins=None):
         as_of=utc_timestamp(as_of or self.clock())
         if as_of>utc_timestamp(self.clock()):raise ValueError('future_as_of_prohibited')
         if (pair is None)==(not all_aud):raise ValueError('select_pair_or_all_aud')
         if pair:validate_pair_id(pair)
-        source=PointInTimeEvidence(self.data_dir,as_of,policy)
+        source=PointInTimeEvidence(self.data_dir,as_of,policy,history_pins=_history_pins)
         pairs=source.candidates() if all_aud else [pair]
         items=[]
         for name in pairs:
@@ -152,7 +152,14 @@ class EligibilityManager:
         try:
             all_aud=stored['selection']=='all_aud_known_as_of'
             regenerated=self.evaluate(as_of=read_time(stored['as_of']),policy=ScreeningPolicy.from_dict(stored['policy']),
-                all_aud=all_aud,pair=None if all_aud else stored['markets'][0]['pair_id'])
+                all_aud=all_aud,pair=None if all_aud else stored['markets'][0]['pair_id'],
+                _history_pins={r['pair_id']:r['history'] for r in stored['markets']})
+            # Legacy reports already encode their selected timestamps in complete
+            # coverage intervals when all known records are inside that window.
+            # Recheck that pinned selection, not later additions to old receipts.
+            for original,current in zip(stored['markets'],regenerated['markets']):
+                if 'selection_intervals' not in original['history']:
+                    current['history'].pop('selection_intervals',None)
             actual=digest(regenerated)
             return dict(status='verified' if actual==report_id else 'dependency_changed_or_unavailable',regenerated_report_id=actual)
         except Exception:
