@@ -9,15 +9,15 @@ from . import book_collector as books
 from .cost_inputs import InputService,ordered
 from .cost_contracts import CostRequest,PreparationConfig
 from .cost_storage import digest
-from .history_coverage import minute_coverage
+from .history_coverage import minute_coverage,intervals
 from .metadata_store import connect_metadata
 from .parquet_store import MonthlyParquetStore
 
 
 class PointInTimeEvidence:
-    def __init__(self,data_dir,as_of,policy):
+    def __init__(self,data_dir,as_of,policy,*,history_pins=None):
         self.data_dir=Path(data_dir);self.as_of=ohlc.utc_timestamp(as_of);self.policy=policy
-        self.store=MonthlyParquetStore(data_dir);self.receipts=[];self.errors=[]
+        self.store=MonthlyParquetStore(data_dir);self.receipts=[];self.errors=[];self.history_pins=history_pins or {}
         with connect_metadata(data_dir,readonly=True) as db:
             self.assets={r[0]:dict(zip(catalogue.COLUMNS,r)) for r in db.execute('SELECT '+','.join(catalogue.COLUMNS)+' FROM assets')}
         for path in sorted((self.data_dir/'catalogue_discovery').glob('*.json')):
@@ -80,7 +80,15 @@ class PointInTimeEvidence:
         except Exception:
             return dict(error='invalid_or_conflicting_price_partition',evidence=[])
         known={};sources={};conflicts=False
+        pin=self.history_pins.get(pair)
+        selected=None
+        if pin and not pin.get('error'):
+            selected=pin.get('selection_intervals',pin['coverage']['complete_intervals'])
+            if sum(int((ohlc.read_time(r['end_exclusive'])-ohlc.read_time(r['start']))/ohlc.MINUTE) for r in selected)!=pin['known_minutes']:
+                return dict(error='legacy_history_selection_unavailable',evidence=pin.get('evidence',[]))
+            selected=[(ohlc.read_time(r['start']),ohlc.read_time(r['end_exclusive'])) for r in selected]
         for path in sorted((self.data_dir/'ohlcv_collection/responses'/pair).glob('*.json')):
+            if selected is not None and str(path.relative_to(self.data_dir)).replace('\\','/') not in pin['sources']:continue
             try:
                 receipt=json.loads(path.read_text())
             except (ValueError,OSError):
@@ -95,6 +103,7 @@ class PointInTimeEvidence:
                 for row in parsed['records']:
                     stamp=row['timestamp']
                     if stamp+ohlc.MINUTE>self.as_of:continue
+                    if selected is not None and not any(a<=stamp<b for a,b in selected):continue
                     if stamp not in physical:
                         continue  # Raw responses may include rows outside a prior collection request.
                     if physical[stamp]!=row:
@@ -113,6 +122,7 @@ class PointInTimeEvidence:
         span=times[-1]-times[0]+ohlc.MINUTE
         return dict(error=None,first=ohlc.sql_time(times[0]),last=ohlc.sql_time(times[-1]),span_days=span.total_seconds()/86400,
             whole_span_days=span.days,observed_minute_days=len(times)/1440,known_minutes=len(times),coverage=coverage,
+            selection_intervals=[dict(start=ohlc.sql_time(a),end_exclusive=ohlc.sql_time(b),minutes=int((b-a)/ohlc.MINUTE)) for a,b in intervals(times)],
             records_hash=digest(ordered('prices_1m',list(known.values()))),sources=sources,evidence=sorted(sources))
 
     def raw_inputs(self,pair,metadata):

@@ -1,6 +1,7 @@
 """Credential-free Kraken public REST data, with injected transport and clock."""
 
 import json
+from contextvars import ContextVar
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -11,7 +12,17 @@ from .data import COLUMNS, DAY, utc_instant, validate_bars
 from .risk import InstrumentRules, Quote, money, spot_only
 
 
+# Optional task-local policy; absent policy preserves the established interface.
+PUBLIC_REQUEST_POLICY = ContextVar("kraken_public_request_policy", default=None)
+
+
 def public_get(endpoint, params, *, exact_numbers=False):
+    policy = PUBLIC_REQUEST_POLICY.get()
+    fetch = lambda: _public_get(endpoint, params, exact_numbers=exact_numbers)
+    return policy.request(endpoint, params, fetch) if policy is not None else fetch()
+
+
+def _public_get(endpoint, params, *, exact_numbers=False):
     if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets", "FeeSchedule"}:
         raise PermissionError("Only public market-data endpoints are allowed")
     url = "https://api.kraken.com/0/public/" + endpoint + "?" + urlencode(params)
