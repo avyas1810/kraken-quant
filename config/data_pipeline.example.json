@@ -1,0 +1,20 @@
+{
+  "all_aud": true,
+  "pair": null,
+  "cadences": {"metadata": 86400, "ohlcv": 60, "books": 60, "fees": 86400, "coverage": 86400, "eligibility": 86400},
+  "enabled": {"metadata": true, "ohlcv": true, "books": true, "fees": true, "coverage": true, "eligibility": false},
+  "public_interval_seconds": 1.1,
+  "request_attempts": 2,
+  "backoff_seconds": 5,
+  "max_backoff_seconds": 60,
+  "max_requests_per_cycle": 150,
+  "max_cycle_seconds": 600,
+  "max_cycle_reports": 1000,
+  "delay_threshold_seconds": 30,
+  "ohlcv_health_seconds": 180,
+  "book_health_seconds": 180,
+  "metadata_max_age_seconds": 86400,
+  "history_days": 90,
+  "book_depth": 10,
+  "repair_on_start": true
+}
