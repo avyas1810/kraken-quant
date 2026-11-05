@@ -75,22 +75,36 @@ def screening(reader,pairs):
     return [m for m in latest['evaluation']['markets'] if m['pair_id'] in pairs],latest
 
 
-def report(data_dir,*,pair=None,all_aud=False,as_of=None):
-    reader=ResearchData(data_dir,as_of=as_of);pairs=selected_pairs(reader,pair,all_aud)
+def report(data_dir,*,pair=None,all_aud=False,as_of=None,start=None,end=None,_reader=None):
+    reader=_reader or ResearchData(data_dir,as_of=as_of);pairs=selected_pairs(reader,pair,all_aud)
     from .data_pipeline import PipelineConfig
     health=PipelineConfig()
-    end=candles.minute_start(reader.as_of);start=end-timedelta(days=90);rows=[]
+    scoped=start is not None or end is not None
+    if scoped:
+        start,end=bounds(start,end)
+        if end>reader.as_of:raise ValueError('query_end_exceeds_knowledge_time')
+    else:
+        end=candles.minute_start(reader.as_of);start=end-timedelta(days=90)
+    rows=[]
     for name in pairs:
-        quality=reader.load_quality_report(name,start,end);stats=quality.datasets;prices=stats['prices_1m'];cov=prices['coverage']
+        if not scoped:
+            quality=reader.load_quality_report(name,start,end);stats=quality.datasets;prices=stats['prices_1m'];cov=prices['coverage']
+        else:stats={dataset:dict(first=start) for dataset in DATA_FILES.values()}
         fees=reader.load_fee_schedules(name);full={};verification_errors=[]
         for dataset in DATA_FILES.values():
             first=stats[dataset]['first']
             try:
-                data=reader._load(dataset,name,first if first and instant(first)<reader.as_of else start,reader.as_of)
+                data=reader._load(dataset,name,start if scoped else first if first and instant(first)<reader.as_of else start,end if scoped else reader.as_of)
                 full[dataset]=data
             except ResearchDataError as error:
                 full[dataset]=None;verification_errors.append(dataset+':'+error.code)
         price=full['prices_1m']
+        if scoped:
+            from .history_coverage import minute_coverage
+            left=candles.minute_start(start)+(candles.MINUTE if start!=candles.minute_start(start) else timedelta(0));right=candles.minute_start(end)
+            cov=minute_coverage(price['timestamp'].to_list() if price is not None else [],left,right,reader.as_of) if left<right else dict(coverage_pct=None,missing_minutes=None,longest_continuous_minutes=0,missing_intervals=[])
+            prices=dict(integrity_unknown=price is None,invalid_records=0)
+            if price is None:cov.update(coverage_pct=None,missing_minutes=None)
         snapshots={}
         for key in ('quotes_1m','orderbook'):
             values=full[key]
@@ -107,10 +121,10 @@ def report(data_dir,*,pair=None,all_aud=False,as_of=None):
             fee_source_available=not fees.empty,account_applicability='account_rates_available_tier_unknown' if not fees.empty and any(fees['account_specific']) else 'unknown',
             price_age_seconds=price_age,price_freshness='unavailable' if price_age is None else 'delayed' if price_age>health.ohlcv_health_seconds else 'recent',
             snapshot_freshness=snapshots,fee_source_age_seconds=fee_age,fee_source_status='unavailable' if fee_age is None else 'stale' if fee_age>health.cadences['fees'] else 'retrieved_effective_date_unknown',fee_applicability='No effective historical date or account tier inferred',
-            cost_algorithms='NOT_IMPLEMENTED',ninety_days_available=cov['missing_minutes']==0 and not prices['integrity_unknown'] and not prices['invalid_records'],
+            cost_algorithms='NOT_IMPLEMENTED',ninety_days_available=(end-start)>=timedelta(days=90) and cov['missing_minutes']==0 and not prices['integrity_unknown'] and not prices['invalid_records'],
             usability='Raw-data inspection and user-designed short-window experiments only; sparse snapshots do not support historical execution-cost studies; no calculated costs',
             historical_limit='REST recent ~720 entries; uncollected older history unavailable without approved archive/source'))
-    return dict(contract_version=1,as_of=candles.sql_time(reader.as_of),pairs=rows,financial_algorithms='NOT_IMPLEMENTED')
+    return dict(contract_version=1,as_of=candles.sql_time(reader.as_of),pairs=rows,financial_algorithms='NOT_IMPLEMENTED',availability_scope='requested_export_window' if scoped else 'stored_history_with_90_day_coverage')
 
 
 def cost_inventory(reader):
@@ -179,12 +193,19 @@ class ResearchExporter:
         return target
     def _source(self,source):
         name=source['source_id'];path=Path(name)
-        allowed=('catalogue_discovery/','ohlcv_collection/responses/','book_collection/responses/','cost_infrastructure/fees/','eligibility_screening/runs/')
+        allowed=('catalogue_discovery/','ohlcv_collection/responses/','book_collection/responses/','cost_infrastructure/fees/','eligibility_screening/runs/','historical_imports/receipts/','historical_imports/execution_receipts/')
         if path.is_absolute() or '..' in path.parts or not name.startswith(allowed):raise ValueError('invalid_source_path')
         target=self.data_dir/path
         if not target.resolve().is_relative_to(self.data_dir.resolve()) or target.is_symlink():raise ValueError('invalid_source_path')
         actual=sha(target) if source.get('hash_kind')=='file_sha256' else digest(json.loads(target.read_text()))
         if actual!=source['source_sha256']:raise ValueError('source_dependency_changed')
+        if name.startswith('historical_imports/receipts/'):
+            from .historical_population import source_records
+            source_records(self.data_dir,json.loads(target.read_text()))
+        if name.startswith('historical_imports/execution_receipts/'):
+            from .historical_population import dependency
+            doc=json.loads(target.read_text())
+            if sha(dependency(self.data_dir,doc['raw_path']))!=doc['raw_sha256']:raise ValueError('historical_execution_source_changed')
     def export(self,*,pair=None,all_aud=False,start=None,end=None,as_of=None):
         reader=ResearchData(self.data_dir,as_of=as_of);pairs=selected_pairs(reader,pair,all_aud)
         if start is None:
@@ -199,7 +220,7 @@ class ResearchExporter:
         start,end=bounds(start,end or reader.as_of)
         if end>reader.as_of:raise ValueError('query_end_exceeds_knowledge_time')
         saved_screen,screen=screening(reader,pairs)
-        available=report(self.data_dir,pair=pair,all_aud=all_aud,as_of=reader.as_of)
+        available=report(self.data_dir,pair=pair,all_aud=all_aud,as_of=reader.as_of,start=start,end=end,_reader=reader)
         self.path('0'*64);self.root.mkdir(parents=True,exist_ok=True)
         stage=Path(tempfile.mkdtemp(prefix='.building-',dir=self.root));writers={};sources={};warnings=[];units={}
         def source(row):
@@ -272,6 +293,17 @@ class ResearchExporter:
                     child.unlink()
                 stage.rmdir()
     def verify(self,export_id):
+        # Gap/evidence JSON fields can exceed csv's 128 KiB default. Bound reads
+        # by the actual selected export files and restore the process setting.
+        target=self.path(export_id);previous=csv.field_size_limit()
+        largest=max((p.stat().st_size for p in target.glob('*.csv')),default=previous)
+        try:
+            csv.field_size_limit(max(previous,largest))
+            return self._verify(export_id)
+        finally:
+            csv.field_size_limit(previous)
+
+    def _verify(self,export_id):
         target=self.path(export_id);manifest=json.loads((target/'manifest.json').read_text());body={k:v for k,v in manifest.items() if k!='export_id'}
         if digest(body)!=export_id or manifest['export_id']!=export_id or manifest.get('contract_version')!=1:raise ValueError('export_manifest_corrupt')
         if set(manifest['files'])!=CSV_FILES or {p.name for p in target.iterdir()}!=CSV_FILES|{'manifest.json'}:raise ValueError('unexpected_export_files')

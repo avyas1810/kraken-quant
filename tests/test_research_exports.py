@@ -306,3 +306,16 @@ def test_quality_report_is_typed_frozen_utc_object(prepared):
     quality=reader.load_quality_report('BTC-AUD',NOW-timedelta(hours=1),clock())
     assert isinstance(quality,QualityReport) and quality.as_of.utcoffset()==timedelta(0)
     with pytest.raises(FrozenInstanceError):quality.pair_id='ETH-AUD'
+
+def test_large_realistic_gap_field_export_verifies_and_restores_limit(prepared):
+    from datetime import datetime,timezone
+    from kraken_quant.historical_population import import_csv
+    root,clock,_=prepared
+    start=datetime(2026,9,1,tzinfo=timezone.utc);path=root/'XBTAUD_1.csv'
+    path.write_text(''.join(str(int((start+timedelta(minutes=2*i)).timestamp()))+',100,100,100,100,1,1\n' for i in range(1600)))
+    import_csv(root,'BTC-AUD',path,source_url='https://assets.kraken.com/marketing/institutions/fixture.zip',archive_sha256='a'*64,coverage_end=datetime(2026,10,1,tzinfo=timezone.utc),received_at=clock())
+    exporter=ResearchExporter(root);limit=csv.field_size_limit()
+    saved=exporter.export(pair='BTC-AUD',start=start,end=start+timedelta(days=7),as_of=clock())
+    assert (exporter.path(saved['export_id'])/'coverage.csv').stat().st_size>131072
+    assert exporter.verify(saved['export_id'])['status']=='PASS'
+    assert csv.field_size_limit()==limit

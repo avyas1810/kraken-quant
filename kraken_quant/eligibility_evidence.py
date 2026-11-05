@@ -76,7 +76,15 @@ class PointInTimeEvidence:
         namespace=self._namespace('ohlcv_collection')
         if namespace is None:return dict(error='price_source_provenance_missing',evidence=[])
         try:
-            physical={r['timestamp']:r for month in self.store.months(pair,'prices_1m') for r in self.store.read(pair,'prices_1m',month).to_pylist() if r['is_complete'] and r['timestamp']+ohlc.MINUTE<=self.as_of}
+            months=self.store.months(pair,'prices_1m')
+            # Frozen evaluations depend only on their explicitly pinned windows.
+            # Later archive additions outside those windows are not past evidence.
+            history_pin=self.history_pins.get(pair)
+            if history_pin and not history_pin.get('error'):
+                windows=history_pin.get('selection_intervals',history_pin['coverage']['complete_intervals'])
+                month_windows=[(ohlc.read_time(v['start']).strftime('%Y-%m'),(ohlc.read_time(v['end_exclusive'])-ohlc.MINUTE).strftime('%Y-%m')) for v in windows]
+                months=tuple(m for m in months if any(a<=m<=b for a,b in month_windows))
+            physical={r['timestamp']:r for month in months for r in self.store.read(pair,'prices_1m',month).to_pylist() if r['is_complete'] and r['timestamp']+ohlc.MINUTE<=self.as_of}
         except Exception:
             return dict(error='invalid_or_conflicting_price_partition',evidence=[])
         known={};sources={};conflicts=False
