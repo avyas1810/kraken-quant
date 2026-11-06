@@ -128,19 +128,30 @@ def validate_table(dataset, table):
     for field in schema:
         if not field.nullable and table[field.name].null_count:
             raise ValueError("Null in required field")
+    if dataset == "prices_1m":
+        # Equivalent existing constraints, evaluated in Arrow for large histories.
+        # Exact decimal columns are never converted to floating point.
+        import pyarrow.compute as pc
+        for pair in pc.unique(table["pair_id"]).to_pylist():
+            validate_pair_id(pair)
+        stamps = pc.cast(table["timestamp"], pa.int64())
+        if pc.any(pc.less(stamps, -62135596800000000)).as_py() or pc.any(pc.greater(stamps, 253402300799999999)).as_py():
+            raise ValueError("Storage timestamp exceeds Python datetime range")
+        aligned = pc.multiply(pc.divide(stamps, 60000000), 60000000)
+        if pc.any(pc.not_equal(stamps, aligned)).as_py():
+            raise ValueError("Price bar timestamp must open on an exact minute")
+        zero = pa.scalar(0, type=pa.decimal128(DECIMAL_PRECISION, DECIMAL_SCALE))
+        if any(pc.any(pc.less_equal(table[name], zero)).as_py() for name in ("open", "high", "low", "close")) or pc.any(pc.less(table["volume_base"], zero)).as_py():
+            raise ValueError("Invalid price or volume")
+        if any(pc.any(pc.greater(table[left], table[right])).as_py() for left, right in (("low", "open"), ("low", "close"), ("low", "high"), ("open", "high"), ("close", "high"))):
+            raise ValueError("Inconsistent OHLC bounds")
+        if pc.any(pc.less(table["trade_count"], 0)).as_py():
+            raise ValueError("Negative trade count")
+        return table
     for row in table.to_pylist():
         validate_pair_id(row["pair_id"])
         stamp = utc_timestamp(row["timestamp"])
-        if dataset == "prices_1m":
-            if stamp.second or stamp.microsecond:
-                raise ValueError("Price bar timestamp must open on an exact minute")
-            if any(row[name] <= 0 for name in ("open", "high", "low", "close")) or row["volume_base"] < 0:
-                raise ValueError("Invalid price or volume")
-            if row["low"] > min(row["open"], row["close"]) or row["high"] < max(row["open"], row["close"]) or row["low"] > row["high"]:
-                raise ValueError("Inconsistent OHLC bounds")
-            if row["trade_count"] is not None and row["trade_count"] < 0:
-                raise ValueError("Negative trade count")
-        elif dataset == "quotes_1m":
+        if dataset == "quotes_1m":
             if row["bid"] <= 0 or row["ask"] < row["bid"]:
                 raise ValueError("Invalid or crossed quote")
             if any(row[name] is not None and row[name] < 0 for name in ("bid_size", "ask_size")):

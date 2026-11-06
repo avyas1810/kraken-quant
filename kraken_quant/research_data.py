@@ -81,7 +81,7 @@ class ResearchData:
         self.store=MonthlyParquetStore(self.data_dir);self.audit=AuditStore(self.data_dir)
         self.evidence=PointInTimeEvidence(self.data_dir,self.as_of,ScreeningPolicy())
         self._cache_key=None;self._cache=None;self.source_selection=None;self.record_selection=None
-        self._parsed_pair=None;self._parsed_sources=OrderedDict()
+        self._parsed_pair=None;self._parsed_sources=OrderedDict();self._historical_sources=OrderedDict()
         self._metadata_hashes={str(path):hashlib.sha256(path.read_bytes()).hexdigest() for _,path in self.evidence.receipts}
 
     def pairs(self):
@@ -206,14 +206,33 @@ class ResearchData:
             try:books.validate_snapshot(rows)
             except ValueError:raise ResearchDataError('invalid_book_snapshot',pair_id=pair) from None
         issues=self.quality_issues(pair,start,end,dataset);refs={};warnings=[]
+        issue_ids_json=json.dumps([i['issue_id'] for i in issues],separators=(',',':'))
         if rows:
-            index,warnings=self._index(pair,dataset,start,end,meta);groups={}
+            try:index,warnings=self._index(pair,dataset,start,end,meta)
+            except ResearchDataError as error:
+                if error.code!='source_binding_missing':raise
+                index,warnings={},[]
+            groups={}
+            archive={}
+            if dataset=='prices_1m':
+                from .historical_population import references
+                try:archive=references(self.data_dir,pair,start,end,self.as_of,self.source_selection)
+                except Exception:raise ResearchDataError('invalid_historical_provenance',pair_id=pair) from None
+            elif dataset in ('quotes_1m','orderbook'):
+                from .historical_execution import references
+                try:archive=references(self.data_dir,pair,dataset,start,end,self.as_of,self.source_selection,cache=self._historical_sources)
+                except Exception:raise ResearchDataError('invalid_historical_execution_provenance',pair_id=pair) from None
             for row in rows:groups.setdefault(row['timestamp'],[]).append(row)
             for stamp,group in groups.items():
-                match=index.get(digest(ordered(dataset,group)))
+                match=None
+                if archive:
+                    for original,reference in archive.get(stamp,()):
+                        if (len(group)==1 and group[0]==original if isinstance(original,dict) else ordered(dataset,group)==ordered(dataset,original)):
+                            match=(None,None,reference);break
+                if match is None:match=index.get(digest(ordered(dataset,group)))
                 if match is None:raise ResearchDataError('missing_or_inconsistent_provenance',pair_id=pair,dataset=dataset,timestamp=candles.sql_time(stamp))
                 ref=match[2];refs[ref['source_id']]=ref
-                for row in group:row.update(ref,query_quality_issue_ids=json.dumps([i['issue_id'] for i in issues],separators=(',',':')))
+                for row in group:row.update(ref,query_quality_issue_ids=issue_ids_json)
         rows.sort(key=lambda r:tuple(r[k] for k in LOGICAL_KEYS[dataset]))
         result=frame(rows,columns,('timestamp','source_received_at'))
         saved=books.checkpoint(self.data_dir,pair,dataset)
@@ -226,6 +245,10 @@ class ResearchData:
             units={f.name:(f.metadata or {}).get(b'unit',b'').decode() for f in dataset_schema(dataset)},
             missing_policy='No filling or invalid-record dropping; unverifiable selected records fail closed. Quality issue IDs apply to the query window.')
         return result
+
+    def load_partition(self,pair,split,manifest_id)->pd.DataFrame:
+        from .historical_readiness import load_partition
+        return load_partition(self,pair,split,manifest_id)
 
     def load_prices(self,pair,start,end)->pd.DataFrame:return self._load('prices_1m',pair,start,end)
     def load_quotes(self,pair,start,end)->pd.DataFrame:return self._load('quotes_1m',pair,start,end)

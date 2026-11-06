@@ -61,6 +61,19 @@ class MonthlyParquetStore:
     def _read_path(self, path, pair_id, dataset, month):
         table = pq.ParquetFile(path, page_checksum_verification=True).read()
         validate_table(dataset, table)
+        if dataset == "prices_1m":
+            # Same physical-key and partition checks without decoding every
+            # Decimal/datetime row repeatedly during full-history reads.
+            import pyarrow.compute as pc
+            if any(value != pair_id for value in pc.unique(table["pair_id"]).to_pylist()):
+                raise ValueError("Partition contains mismatched pair or month")
+            if pc.count_distinct(table["timestamp"]).as_py() != table.num_rows:
+                raise DuplicateKeyError("Conflicting or physically duplicated logical key")
+            if table.num_rows:
+                edges = pc.min_max(table["timestamp"]).as_py()
+                if any(observation_month(edges[key]) != month for key in ("min", "max")):
+                    raise ValueError("Partition contains mismatched pair or month")
+            return table
         _rows_by_key(dataset, table, allow_identical=False)
         if any(row["pair_id"] != pair_id or observation_month(row["timestamp"]) != month for row in table.to_pylist()):
             raise ValueError("Partition contains mismatched pair or month")
@@ -111,7 +124,10 @@ class MonthlyParquetStore:
                     if key in merged_rows and merged_rows[key] != row:
                         raise DuplicateKeyError("Conflicting logical key; explicit corrections require a later policy")
                     merged_rows[key] = row
-                merged = table_from_records(dataset, [merged_rows[key] for key in sorted(merged_rows)])
+                # Both old and incoming tables already passed the exact schema contract.
+                # Rebuilding their typed rows needs no repeated scalar coercion.
+                merged = pa.Table.from_pylist([merged_rows[key] for key in sorted(merged_rows)], schema=dataset_schema(dataset))
+                validate_table(dataset, merged)
                 if not old.equals(merged, check_metadata=True):
                     self._replace(path, merged, pair_id, dataset, month)
                 paths.append(path)

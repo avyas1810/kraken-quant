@@ -23,7 +23,7 @@ def public_get(endpoint, params, *, exact_numbers=False):
 
 
 def _public_get(endpoint, params, *, exact_numbers=False):
-    if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets", "FeeSchedule"}:
+    if endpoint not in {"OHLC", "Ticker", "Depth", "AssetPairs", "Assets", "FeeSchedule", "Trades"}:
         raise PermissionError("Only public market-data endpoints are allowed")
     url = "https://api.kraken.com/0/public/" + endpoint + "?" + urlencode(params)
     if endpoint == "FeeSchedule":
