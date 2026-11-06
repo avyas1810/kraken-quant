@@ -250,6 +250,16 @@ class ResearchData:
         from .historical_readiness import load_partition
         return load_partition(self,pair,split,manifest_id)
 
+    def continuity(self,request):
+        """Inspect event-time/grid readiness offline; never mutate observations."""
+        from .market_continuity import MarketDataContinuity
+        return MarketDataContinuity(self).evaluate(request)
+
+    def load_for_research(self,request):
+        """Fail closed on explicit continuity limits before releasing raw data."""
+        from .market_continuity import MarketDataContinuity
+        return MarketDataContinuity(self).release(request)
+
     def load_prices(self,pair,start,end)->pd.DataFrame:return self._load('prices_1m',pair,start,end)
     def load_quotes(self,pair,start,end)->pd.DataFrame:return self._load('quotes_1m',pair,start,end)
     def load_orderbooks(self,pair,start,end)->pd.DataFrame:return self._load('orderbook',pair,start,end)
