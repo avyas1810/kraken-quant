@@ -148,6 +148,48 @@ later of event availability and receipt time. Completeness evidence must also
 be known by the relevant interval end. Late receipts cannot satisfy observation
 minimums before they arrive. Unversioned historical revisions remain a limitation.
 
+### Late-arrival review correction
+
+With `require_received_by_reference=True`, `observation_count`, minimum-count
+admission, grid coverage and strict-grid admission share the **original requested
+cell's end** as their deadline. A row received later in the query window cannot
+retroactively repair that cell or satisfy its admission count. Receipt exactly
+at the cell end is allowed; receipt one microsecond later is late. The reference
+at cell start remains a separate decision with its own earlier cutoff.
+
+Reports separately expose `source_event_observation_count`,
+`source_event_coverage_pct`, original source-event bounds,
+`received_by_window_end_observation_count` and `late_observation_count`. The latter
+two always describe actual receipt timing, even in retrospective replay. A source
+event can therefore contribute to known source-event coverage while contributing
+nothing to received-time decision coverage. Each grid cell exposes its own
+source-event count alongside the decision-eligible `observation_count`.
+
+Original event timestamps and provenance are unchanged. In received-time mode,
+`observations` retains raw events actually available by the requested window end,
+including late arrivals, with `decision_interval_end` and `interval_admitted`
+annotations. EVENT_TIME/STRICT_GRID `result.data` selects only interval-admitted
+rows. ASOF_REFERENCE can use a late event **after receipt**, without revising any
+earlier decision or regressing the reference when an older event arrives later.
+Arrivals after the requested window contribute no in-window decision or reference.
+Historical replay with received-time validation disabled preserves its existing
+event-time classifications, counts and output rows.
+
+The real BTC/AUD archive was checked again for 1 September 2026: retrospective
+replay still returns **331** observations. With received-time validation enabled,
+the same **331 source events** yield **zero admitted observations**, zero rows
+received by that historical window end, and rejection `observations:0<required:1`.
+These archive records were actually acquired later, so they cannot represent
+information received during September. Source-event coverage remains 22.9861%;
+received-time decision coverage is 0%. No canonical record was changed.
+
+Review verification: all five initial reproductions failed before the correction.
+The completed continuity suite now has **51 passing tests**, including receipt
+ordering, original-interval deadlines, exact boundary precision, minimum-count
+and strict-grid rejection, decision-prefix invariance and returned-row admission.
+The focused historical/export/continuity suites pass **114 tests**. The complete
+offline suite passes **970 tests, with 7 existing skips**, in 405.62 seconds.
+
 The first reference must come from a genuine row in the explicitly bounded
 `reference_lookback`; otherwise its age is unknown and a configured staleness
 limit rejects. Staleness is measured from the original observation timestamp
@@ -220,7 +262,7 @@ strategy is included. Source completeness does not establish executable liquidit
 profitability, historical fee applicability or arbitrary strategy-code leakage
 safety. Those remain separate requirements.
 
-Final local verification: **42 continuity tests passed**; the complete offline
+Initial M12 verification (before the late-arrival review): **42 continuity tests passed**; the complete offline
 suite finished with **961 passed, 7 skipped in 312.95 seconds**. Skips remain
 existing opt-in/platform checks. A before/after SHA-256 audit verified **2,446
 protected files unchanged**, including canonical Parquet, metadata SQLite,

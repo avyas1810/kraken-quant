@@ -144,6 +144,128 @@ def test_late_received_rows_do_not_satisfy_minimum_observations():
     assert report['observation_count'] == 0 and not report['passed']
 
 
+def test_received_after_original_interval_does_not_backdate_admission():
+    raw=candles([0,1]);raw.loc[0,'source_received_at']=START+3*MINUTE
+    original=raw.copy(deep=True)
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True,minimum_observations=2))
+    grid,report=inspect(raw,req)
+    assert grid.iloc[0].classification == 'MISSING_OR_UNVERIFIED'
+    assert report['observation_count'] == 1 and not report['passed']
+    assert report['source_event_observation_count'] == 2
+    assert report['received_by_window_end_observation_count'] == 2
+    assert report['late_observation_count'] == 1
+    assert report['source_event_coverage_pct'] == 20 and report['coverage_pct'] == 10
+    assert grid.iloc[0].source_event_observation_count == 1
+    assert pd.isna(grid.iloc[1].last_observation_at)
+    assert grid.iloc[2].last_observation_at == START+MINUTE
+    assert_frame_equal(raw,original)
+
+
+def test_out_of_order_arrivals_preserve_historical_decisions():
+    raw=candles([0,1,2,3])
+    raw['source_received_at']=[START+v*MINUTE for v in (5,2,4,4)]
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True,minimum_observations=3))
+    grid,report=inspect(raw,req)
+    assert report['observation_count'] == 2 and report['late_observation_count'] == 2
+    assert not report['passed']
+    assert list(grid['classification'][:4]) == ['MISSING_OR_UNVERIFIED','OBSERVED','MISSING_OR_UNVERIFIED','OBSERVED']
+    assert grid.iloc[2].last_observation_at == START+MINUTE
+    assert grid.iloc[4].last_observation_at == START+3*MINUTE
+    assert grid.iloc[5].last_observation_at == START+3*MINUTE  # old late event cannot regress reference
+    for _,row in grid.iterrows():
+        if pd.notna(row.last_observation_at):
+            assert row.observation_available_at <= row.reference_time
+            assert row.reference_source_received_at <= row.reference_time
+    shuffled,_=inspect(raw.iloc[::-1],req)
+    assert_frame_equal(grid,shuffled)
+
+
+def test_arrivals_after_window_only_contribute_source_event_coverage():
+    raw=candles([0,1]);raw['source_received_at']=START+12*MINUTE
+    req=request(policy=DataPolicy.STRICT_GRID,requirements=ContinuityRequirements(require_received_by_reference=True,minimum_observations=2))
+    grid,report=inspect(raw,req)
+    assert report['source_event_observation_count'] == 2
+    assert report['received_by_window_end_observation_count'] == 0
+    assert report['observation_count'] == 0 and report['late_observation_count'] == 2
+    assert grid['last_observation_at'].isna().all()
+    assert 'observations:0<required:2' in report['failure_reasons']
+    assert 'strict_grid_unacceptable_intervals:10' in report['failure_reasons']
+
+
+def test_strict_grid_and_minimum_count_share_original_interval_deadlines():
+    raw=candles(range(10));raw.loc[0,'source_received_at']=START+2*MINUTE
+    req=request(policy=DataPolicy.STRICT_GRID,requirements=ContinuityRequirements(require_received_by_reference=True,minimum_observations=10))
+    grid,report=inspect(raw,req)
+    assert report['observation_count'] == grid['observation_count'].sum() == 9
+    assert 'observations:9<required:10' in report['failure_reasons']
+    assert 'strict_grid_unacceptable_intervals:1' in report['failure_reasons']
+    # Retrospective historical replay keeps the existing event-time contract.
+    replay=replace(req,requirements=replace(req.requirements,require_received_by_reference=False))
+    _,old=inspect(raw,replay)
+    assert old['passed'] and old['observation_count'] == 10
+
+
+def test_single_late_event_enters_reference_only_at_receipt():
+    raw=candles([0]);raw['source_received_at']=START+timedelta(minutes=3,seconds=30)
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True,minimum_observations=0))
+    grid,report=inspect(raw,req)
+    assert report['observation_count'] == 0
+    assert grid['last_observation_at'][:4].isna().all()
+    assert grid.iloc[4].last_observation_at == START
+    assert grid.iloc[4].observation_available_at == START+timedelta(minutes=3,seconds=30)
+    assert grid.iloc[0].classification == 'MISSING_OR_UNVERIFIED'
+
+
+def test_later_arrival_never_revises_earlier_decision_columns():
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True))
+    before=candles([0]);after=candles([0,2]);after.loc[1,'source_received_at']=START+6*MINUTE
+    baseline,_=inspect(before,req);arrivals,_=inspect(after,req)
+    decision_columns=['classification','observation_count','reference_close','last_observation_at',
+        'observation_available_at','reference_source_received_at','staleness_seconds']
+    assert_frame_equal(baseline.loc[:5,decision_columns],arrivals.loc[:5,decision_columns])
+    assert arrivals.iloc[6].last_observation_at == START+2*MINUTE
+    assert arrivals.iloc[2].classification == 'MISSING_OR_UNVERIFIED'
+    assert arrivals.iloc[2].source_event_observation_count == 1
+
+
+@pytest.mark.parametrize('delay,admitted',[(timedelta(0),True),(timedelta(microseconds=1),False)])
+def test_original_interval_receipt_boundary(delay,admitted):
+    raw=candles([0]);raw['source_received_at']=START+MINUTE+delay
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True))
+    grid,report=inspect(raw,req)
+    assert report['observation_count'] == int(admitted)
+    assert (grid.iloc[0].classification == 'OBSERVED') == admitted
+
+
+def test_received_time_release_excludes_late_admissions_but_retains_raw_events(tmp_path):
+    class Reader:
+        data_dir=tmp_path
+        as_of=START+timedelta(days=1)
+        source_selection=None
+        def _load(self,*args):
+            return raw.copy(deep=True)
+    raw=candles([0,1,2]);raw.loc[0,'source_received_at']=START+3*MINUTE
+    raw.loc[2,'source_received_at']=START+12*MINUTE
+    before=raw.copy(deep=True)
+    req=request(requirements=ContinuityRequirements(require_received_by_reference=True))
+    service=MarketDataContinuity(Reader())
+    result=service.release(req);key=('BTC-AUD','prices_1m')
+    assert result.reports[0]['observation_count'] == 1
+    assert result.reports[0]['source_event_observation_count'] == 3
+    assert len(result.observations[key]) == 2  # actual receipts inside window, including late t0
+    assert len(result.data[key]) == 1
+    assert result.data[key]['timestamp'].iloc[0] == START+MINUTE
+    assert result.observations[key]['timestamp'].iloc[0] == START
+    assert result.observations[key]['source_id'].tolist() == ['fixture','fixture']
+    with pytest.raises(ContinuityRejected,match='observations:1<required:2'):
+        service.release(replace(req,requirements=replace(req.requirements,minimum_observations=2)))
+    with pytest.raises(ContinuityRejected,match='strict_grid'):
+        service.release(replace(req,policy=DataPolicy.STRICT_GRID))
+    replay=service.release(replace(req,requirements=replace(req.requirements,require_received_by_reference=False)))
+    assert replay.reports[0]['observation_count'] == len(replay.data[key]) == 3
+    assert_frame_equal(raw,before)
+
+
 def test_asof_explicit_staleness_and_strict_grid():
     with pytest.raises(ValueError,match='explicit_staleness'):
         request(policy=DataPolicy.ASOF_REFERENCE)

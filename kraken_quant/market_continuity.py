@@ -133,7 +133,11 @@ class ContinuityResult:
     @property
     def data(self):
         """Policy-selected output: references are never mixed into raw candles."""
-        return self.intervals if self.request.policy == DataPolicy.ASOF_REFERENCE else self.observations
+        if self.request.policy == DataPolicy.ASOF_REFERENCE:
+            return self.intervals
+        if self.request.requirements.require_received_by_reference:
+            return {key:frame.loc[frame['interval_admitted']].copy() for key,frame in self.observations.items()}
+        return self.observations
 
 
 class ContinuityRejected(ValueError):
@@ -167,6 +171,11 @@ def _covers(windows, start, end):
     return False
 
 
+def _interval_end(request, stamp):
+    """Deadline of the requested event-time cell, not the whole query window."""
+    return request.start + ((stamp-request.start)//request.frequency+1)*request.frequency
+
+
 def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=()):
     """Pure admission logic. Input frame is genuine observations, never modified."""
     as_of = instant(as_of)
@@ -178,7 +187,8 @@ def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=())
         stamp = instant(row['timestamp'])
         if row['pair_id'] != asset or stamp >= request.end:
             raise ValueError('unexpected_asset_or_future_observation')
-        available = stamp + timedelta(minutes=1) if dataset == 'prices_1m' else stamp
+        event_available = stamp + timedelta(minutes=1) if dataset == 'prices_1m' else stamp
+        available = event_available
         received = instant(row['source_received_at'])
         if received > as_of or available > as_of:
             raise ValueError('future_or_uncommitted_observation')
@@ -186,7 +196,8 @@ def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=())
             raise ValueError('incomplete_candle')
         if request.requirements.require_received_by_reference:
             available = max(available, received)
-        groups.setdefault(stamp, dict(stamp=stamp, available=available, row=row))
+        groups.setdefault(stamp, dict(stamp=stamp, available=available, received=received,
+            event_available=event_available, row=row))
     ordered = sorted(groups.values(), key=lambda v: (v['available'], v['stamp']))
     # Last source event known by decision time, not last response receipt.
     references = []; latest = None
@@ -196,12 +207,15 @@ def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=())
         references.append(latest)
     availability = [v['available'] for v in ordered]
     stamps = sorted(groups)
-    in_window = [t for t in stamps if request.start <= t < request.end and groups[t]['available'] <= request.end]
+    source_in_window = [t for t in stamps if request.start <= t < request.end]
+    in_window = [t for t in source_in_window if groups[t]['available'] <= _interval_end(request,t)]
+    admitted = set(in_window)
     rows = []; point = request.start
     while point < request.end:
         end = point + request.frequency
         # A bar opening in a cell is observed only after its full minute ends.
-        observed = [t for t in stamps[bisect_left(stamps, point):bisect_left(stamps, end)] if groups[t]['available'] <= end]
+        source_observed = stamps[bisect_left(stamps, point):bisect_left(stamps, end)]
+        observed = [t for t in source_observed if t in admitted]
         visible = [s for s in sources if not request.requirements.require_received_by_reference or s.known_at <= end]
         covered = [s for s in visible if s.complete and s.start < end and s.end > point]
         source_complete = _covers(covered, point, end)
@@ -222,6 +236,7 @@ def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=())
         rows.append(dict(interval_start=point, interval_end=end, classification=classification,
             source_complete=source_complete, coverage_evidence=tuple(s.source_id for s in covered),
             observation_count=len(observed), reference_time=point,
+            source_event_observation_count=len(source_observed),
             last_observation_at=last['stamp'] if last else None,
             observation_available_at=last['available'] if last else None,
             staleness_seconds=stale.total_seconds() if stale is not None else None,
@@ -287,6 +302,13 @@ def analyze(frame, request, asset, dataset, as_of, sources=(), source_errors=())
     report = dict(asset=asset, dataset=dataset, requested_start=request.start, requested_end_exclusive=request.end,
         available_start=in_window[0] if in_window else None, available_end=in_window[-1] if in_window else None,
         observation_count=len(in_window), physical_rows=sum(request.start <= instant(t) < request.end for t in frame['timestamp']),
+        source_event_observation_count=len(source_in_window),
+        source_event_start=source_in_window[0] if source_in_window else None,
+        source_event_end=source_in_window[-1] if source_in_window else None,
+        received_by_window_end_observation_count=sum(max(groups[t]['event_available'],groups[t]['received']) <= request.end for t in source_in_window),
+        late_observation_count=sum(max(groups[t]['event_available'],groups[t]['received']) > _interval_end(request,t) for t in source_in_window),
+        source_event_coverage_pct=100*sum(r['source_event_observation_count'] > 0 for r in rows)/len(rows),
+        observation_count_semantics='available_by_original_interval_end' if requirements.require_received_by_reference else 'historical_event_time_replay',
         grid_intervals=len(rows), coverage_pct=observed_pct, classifications=counts,
         maximum_observation_gap_seconds=max(
             [(b-a).total_seconds() for a,b in zip(in_window,in_window[1:])]
@@ -342,7 +364,12 @@ class MarketDataContinuity:
                     if request.requirements.require_received_by_reference:
                         available = pd.Series([max(instant(a), instant(b)) for a,b in zip(available,selected['source_received_at'])], index=selected.index)
                     selected['observation_available_at'] = available
+                    if request.requirements.require_received_by_reference:
+                        selected['decision_interval_end'] = [_interval_end(request,instant(t)) for t in selected['timestamp']]
+                        selected['interval_admitted'] = available <= selected['decision_interval_end']
                     selected = selected.loc[available <= request.end]
+                elif request.requirements.require_received_by_reference:
+                    selected['interval_admitted'] = pd.Series(index=selected.index,dtype=bool)
                 observations[key] = selected
                 grids[key] = grid; reports.append(report)
         return ContinuityResult(request, observations, grids, tuple(reports))
