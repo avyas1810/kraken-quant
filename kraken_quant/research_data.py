@@ -260,6 +260,18 @@ class ResearchData:
         from .market_continuity import MarketDataContinuity
         return MarketDataContinuity(self).release(request)
 
+    def generate_partition_plan(self,request):
+        from .partition_algorithm import PartitionAlgorithm
+        return PartitionAlgorithm(self).generate_partition_plan(request)
+
+    def load_partition_phase(self,manifest_id,phase,asset,**options):
+        from .partition_manifest import load_plan_phase
+        return load_plan_phase(self,manifest_id,phase,asset,**options)
+
+    def validate_partition_plan(self,manifest_id,**options):
+        from .partition_manifest import validate_plan
+        return validate_plan(self,manifest_id,**options)
+
     def load_prices(self,pair,start,end)->pd.DataFrame:return self._load('prices_1m',pair,start,end)
     def load_quotes(self,pair,start,end)->pd.DataFrame:return self._load('quotes_1m',pair,start,end)
     def load_orderbooks(self,pair,start,end)->pd.DataFrame:return self._load('orderbook',pair,start,end)
