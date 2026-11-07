@@ -6,7 +6,7 @@ import json
 from .market_continuity import ContinuityRequirements, DataPolicy
 
 PHASES = ('training', 'validation', 'test')
-ALGORITHM_VERSION = 'common-calendar-v1'
+ALGORITHM_VERSION = 'common-calendar-v2'
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ class PartitionRequest:
     maximum_grid_cells: int = 2_000_000
     maximum_records: int = 1_000_000
     maximum_candidates: int = 128
+    window_mode: str = 'FIXED_WINDOW'
 
 
 @dataclass(frozen=True)

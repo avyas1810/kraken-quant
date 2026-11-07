@@ -48,6 +48,10 @@ def configuration(request, reader):
         raise ValueError('bounded_ordered_search_window_required')
     if not isinstance(request.frequency,timedelta) or request.frequency<=timedelta(0):
         raise ValueError('positive_data_frequency_required')
+    if request.window_mode not in ('FIXED_WINDOW','AUTO_WINDOW'):
+        raise ValueError('explicit_fixed_or_auto_window_mode_required')
+    if request.window_mode=='FIXED_WINDOW' and (start is None or align(start,request.frequency)!=start or align(end,request.frequency)!=end):
+        raise ValueError('fixed_window_requires_explicit_start_and_exact_grid_boundaries')
     if not request.datasets or len(set(request.datasets))!=len(request.datasets) or not set(request.datasets)<={'prices_1m','quotes_1m','orderbook'}:
         raise ValueError('supported_distinct_required_data_types_required')
     if 'prices_1m' in request.datasets and request.frequency%timedelta(minutes=1):
@@ -94,6 +98,43 @@ def config_payload(request):
     return convert(asdict(request))
 
 
+def selection_audit(request,assets,index,available,selected,attempts,folds,failures):
+    original_start=request.start if request.start is not None else available[0]
+    excluded=[]
+    if selected:
+        cuts=sorted({original_start,request.end,*available,*selected})
+        for a,b in zip(cuts,cuts[1:]):
+            if not original_start<=a<b<=request.end or selected[0]<=a and b<=selected[1]:continue
+            reason='before_common_history_alignment_or_warmup' if b<=available[0] else 'after_common_observation_history' if a>=available[1] else 'availability_or_quality_window_search'
+            excluded.append(dict(start=a,end_exclusive=b,reason=reason))
+    sufficiency=[];phase_exclusions=[]
+    for group in folds:
+        previous=selected[0] if selected else group['candidate_start']
+        for i,phase in enumerate(PHASES):
+            part=group['phases'][phase];a,b=part['start'],part['end_exclusive']
+            if previous<a:phase_exclusions.append(dict(fold=group['fold'],start=previous,end_exclusive=a,reason='configured_rolling_schedule_or_phase_guards'))
+            previous=b
+            for asset,types in part['assets'].items():
+                for dataset,entry in types.items():
+                    quality=entry['quality'];errors=[f['reason'] for f in failures if f.get('asset')==asset and f.get('dataset')==dataset and (f.get('phase')=='envelope' or f.get('phase')==phase and f.get('fold')==group['fold'])]
+                    sufficiency.append(dict(asset=asset,dataset=dataset,phase=phase,fold=group['fold'],
+                        passed=quality['passed'] and not errors,observation_count=quality['observation_count'],
+                        required_observations=max(request.minimum_observations[i],request.continuity.minimum_observations),
+                        available_seconds=max(0,(b-a).total_seconds()),required_seconds=request.minimum_durations[i].total_seconds(),
+                        coverage_pct=quality['coverage_pct'],source_completeness_pct=quality['source_completeness_pct'],
+                        maximum_missing_gap_seconds=quality['maximum_missing_gap_seconds'],maximum_staleness_seconds=quality['maximum_staleness_seconds'],
+                        reasons=errors or quality['failure_reasons']))
+        if selected and previous<selected[1]:phase_exclusions.append(dict(fold=group['fold'],start=previous,end_exclusive=selected[1],reason='configured_label_horizon'))
+    return dict(window_mode=request.window_mode,assets=assets,
+        requested_window=dict(start=request.start,end_exclusive=request.end),
+        resolved_requested_window=dict(start=original_start,end_exclusive=request.end),
+        common_available_window=dict(start=available[0],end_exclusive=available[1]),
+        selected_window=dict(start=selected[0],end_exclusive=selected[1]) if selected else None,
+        excluded_periods=excluded,phase_guard_exclusions=phase_exclusions,
+        per_asset_sufficiency=sufficiency,selection_attempts=attempts,failures=failures,
+        selection_inputs='timestamps, source availability, admission quality and declared sufficiency only; no performance inputs')
+
+
 def stale_intervals(frame,dataset,start,end,requirements):
     """Candidate boundaries only; M12 independently admits every final phase."""
     limit=requirements.maximum_staleness
@@ -123,22 +164,41 @@ class PartitionAlgorithm:
         self.reader=reader
 
     def generate_partition_plan(self,request):
+        normalized=False
         try:
             request=configuration(request,self.reader)
+            normalized=True
+            from .partition_governance import frozen_request
+            registered=frozen_request(self.reader,request,config_payload(request))
+            if registered is not None:return registered
         except (ValueError,TypeError,AttributeError,OverflowError) as error:
-            return self._reject('INVALID_CONFIGURATION',[dict(reason=str(error))])
+            result=self._reject('INVALID_CONFIGURATION',[dict(reason=str(error))])
+            return self._rejection_audit(request,result) if normalized else result
         reader=ResearchData(self.reader.data_dir,as_of=request.cutoff,clock=self.reader.clock)
         try:
-            return self._generate(reader,request)
+            result=self._generate(reader,request)
         except ResearchDataError as error:
-            return self._reject('SOURCE_UNAVAILABLE',[dict(reason=error.code,details=error.report)])
+            result=self._reject('SOURCE_UNAVAILABLE',[dict(reason=error.code,details=error.report)])
         except (ValueError,OSError,KeyError) as error:
-            return self._reject('SOURCE_UNAVAILABLE',[dict(reason=str(error))])
+            result=self._reject('SOURCE_UNAVAILABLE',[dict(reason=str(error))])
+        return self._rejection_audit(request,result)
 
     @staticmethod
-    def _reject(status,reasons):
+    def _rejection_audit(request,result):
+        if result.ready or result.report.get('window_selection'):return result
+        report=result.report
+        report['window_selection']=[dict(window_mode=request.window_mode,assets=request.assets,
+            requested_window=dict(start=request.start,end_exclusive=request.end),
+            resolved_requested_window=None,common_available_window=None,selected_window=None,
+            excluded_periods=[],selection_attempts=[],failures=report['failures'],
+            per_asset_sufficiency=[dict(asset=a,dataset=d,passed=False,observation_count=None,
+                reason='Not evaluated because source, configuration, registration or work-budget checks failed.') for a in request.assets for d in request.datasets])]
+        return PartitionPlan(result.status,None,encoded(report))
+
+    @staticmethod
+    def _reject(status,reasons,window_selection=None):
         return PartitionPlan(status,None,encoded(dict(contract_version=1,algorithm_version=ALGORITHM_VERSION,status=status,
-            failures=reasons,executable=False,phases=[],note='No selected asset was dropped and no requirement was relaxed.')))
+            failures=reasons,executable=False,phases=[],window_selection=window_selection or [],note='No selected asset was dropped and no requirement was relaxed.')))
 
     def _index(self,reader,request):
         index={};metadata={}
@@ -160,15 +220,28 @@ class PartitionAlgorithm:
     def _generate(self,reader,request):
         index,metadata=self._index(reader,request)
         groups=[request.assets] if request.selection_policy=='COMMON_CALENDAR' else [(p,) for p in request.assets]
-        successful=[];all_failures=[];budget=0
+        successful=[];all_failures=[];budget=0;audits=[]
         for assets in groups:
-            left=max(index[(a,d)][0] for a in assets for d in request.datasets)
-            left=align(max(left,request.start) if request.start else left,request.frequency,True)
-            left+=request.feature_lookback+request.reference_lookback
-            right=min(request.end,min(align(index[(a,d)][1],request.frequency)+request.frequency for a in assets for d in request.datasets))
-            right=align(right,request.frequency)
+            first=max(index[(a,d)][0] for a in assets for d in request.datasets)
+            last=min(align(index[(a,d)][1],request.frequency)+request.frequency for a in assets for d in request.datasets)
+            available=(align(first,request.frequency,True)+request.feature_lookback+request.reference_lookback,align(min(request.cutoff,last),request.frequency))
+            fixed=request.window_mode=='FIXED_WINDOW';bounds_failures=[]
+            if fixed:
+                left,right=request.start,request.end
+                for asset in assets:
+                    for dataset in request.datasets:
+                        a,b=index[(asset,dataset)]
+                        a=align(a,request.frequency,True)+request.feature_lookback+request.reference_lookback
+                        b=align(min(request.cutoff,align(b,request.frequency)+request.frequency),request.frequency)
+                        if left<a or right>b:bounds_failures.append(dict(status='INSUFFICIENT_HISTORY',asset=asset,dataset=dataset,phase='envelope',
+                            requested_start=left,requested_end_exclusive=right,available_start=a,available_end_exclusive=b,
+                            reason='Fixed envelope exceeds available common history/context; dates were not shifted.'))
+            else:
+                left=align(max(first,request.start) if request.start else first,request.frequency,True)+request.feature_lookback+request.reference_lookback
+                right=align(min(request.end,last),request.frequency)
             if left>=right:
-                return self._reject('NO_COMMON_WINDOW',[dict(assets=assets,start=left,end=right,reason='Selected assets/data types have no common calendar interval after context requirements.')])
+                reasons=[dict(assets=assets,start=left,end=right,reason='Selected assets/data types have no common calendar interval after context requirements.')]
+                return self._reject('NO_COMMON_WINDOW',reasons,audits+[selection_audit(request,assets,index,available,None,[],[],reasons)])
             if right-left>timedelta(days=3660):return self._reject('INVALID_CONFIGURATION',[dict(reason='Narrow the search window to at most 3660 days.')])
             cells=(right-left)//request.frequency
             budget+=cells*len(assets)*len(request.datasets)
@@ -217,18 +290,22 @@ class PartitionAlgorithm:
             for i,valid in enumerate(mask+[False]):
                 if valid and begin is None:begin=i
                 if not valid and begin is not None:candidates.append((left+begin*request.frequency,left+i*request.frequency));begin=None
-            candidates.sort(key=lambda p:((p[1]-p[0]),p[1]),reverse=True)
+            candidates=[(left,right)] if fixed else sorted(candidates,key=lambda p:((p[1]-p[0]),p[1]),reverse=True)
             if not candidates:
-                return self._reject('INSUFFICIENT_DATA_QUALITY',[dict(assets=assets,reason='No common source/continuity-valid calendar run.',start=left,end=right)])
+                reasons=[dict(assets=assets,reason='No common source/continuity-valid calendar run.',start=left,end=right)]
+                return self._reject('INSUFFICIENT_DATA_QUALITY',reasons,audits+[selection_audit(request,assets,index,available,None,[],[],reasons)])
             queue=deque(candidates[:request.maximum_candidates]);seen=set(queue)
             exhausted=len(candidates)>request.maximum_candidates
             gaps=sorted(set(activity_gaps),key=lambda p:((p[1]-p[0]),p[1]),reverse=True)
-            chosen=None;all_failures=[];attempts=0
+            chosen=None;all_failures=[];attempts=0;attempt_log=[];attempt=[];selected=None
             while queue:
                 a,b=queue.popleft();attempts+=1
                 attempt,failures=self._attempt(reader,request,tuple(assets),a,b,frames,sources)
-                if not failures:chosen=attempt;break
+                failures=bounds_failures+failures
+                attempt_log.append(dict(start=a,end_exclusive=b,passed=not failures,reasons=failures))
+                if not failures:chosen=attempt;selected=(a,b);break
                 all_failures.extend(failures)
+                if fixed:break
                 if any(f['status']=='INSUFFICIENT_HISTORY' for f in failures):continue
                 # Intermittent EVENT_TIME data can be usable in a recent suffix
                 # even when a distant isolated observation makes the full span
@@ -240,16 +317,20 @@ class PartitionAlgorithm:
                         if len(seen)>=request.maximum_candidates:exhausted=True;continue
                         seen.add(child);queue.append(child)
             if chosen is None:
-                if exhausted:return self._reject('INVALID_CONFIGURATION',[dict(reason='Candidate search budget exhausted without a valid plan; narrow the window or explicitly raise maximum_candidates.',attempts=attempts)])
+                audit=selection_audit(request,assets,index,available,None,attempt_log,attempt,all_failures)
+                if exhausted:return self._reject('INVALID_CONFIGURATION',[dict(reason='Candidate search budget exhausted without a valid plan; narrow the window or explicitly raise maximum_candidates.',attempts=attempts)],audits+[audit])
                 priority=('INSUFFICIENT_HISTORY','INSUFFICIENT_OBSERVATIONS','INSUFFICIENT_DATA_QUALITY')
                 status=next(s for s in priority if any(f['status']==s for f in all_failures))
-                if not all(mask) and status=='INSUFFICIENT_HISTORY':
+                if not fixed and not all(mask) and status=='INSUFFICIENT_HISTORY':
                     status='INSUFFICIENT_DATA_QUALITY'
-                return self._reject(status,all_failures)
+                return self._reject(status,all_failures,audits+[audit])
+            audits.append(selection_audit(request,assets,index,available,selected,attempt_log,chosen,[]))
             successful.extend(chosen)
         body=dict(contract_version=1,algorithm_version=ALGORITHM_VERSION,status='READY',executable=True,
             configuration=config_payload(request),evaluation_cutoff=request.cutoff,created_at=instant(reader.clock()),
-            groups=successful,metadata_sources=metadata,
+            groups=successful,metadata_sources=metadata,window_selection=audits,
+            research_governance=dict(registration_required_before_data_access=request.mode=='research',
+                performance_inputs_accepted=False,holdout_guarantee='NOT_CERTIFIED_UNTOUCHED'),
             guarantees=['Shared calendar boundaries within every common-calendar fold.','Every asset/data type/phase validated by M12.','No fitted user model or feature code is inspected.','A plan does not authorize live orders.'])
         raw=encoded(body);ident=sha(raw)
         immutable(reader.data_dir/'partition_plans/v1'/(ident+'.json'),raw)

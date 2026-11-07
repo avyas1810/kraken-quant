@@ -34,8 +34,18 @@ def read_plan(data_dir,manifest_id):
     if sha(raw)!=manifest_id:
         raise ValueError('partition_plan_hash_mismatch')
     doc=json.loads(raw)
-    if doc.get('contract_version')!=1 or doc.get('algorithm_version')!=ALGORITHM_VERSION or doc.get('status')!='READY' or doc.get('executable') is not True:
+    if doc.get('contract_version')!=1 or doc.get('algorithm_version') not in ('common-calendar-v1',ALGORITHM_VERSION) or doc.get('status')!='READY' or doc.get('executable') is not True:
         raise ValueError('validated_ready_partition_plan_required')
+    if doc['algorithm_version']==ALGORITHM_VERSION:
+        mode=doc['configuration']['window_mode']
+        if mode not in ('FIXED_WINDOW','AUTO_WINDOW') or not doc.get('window_selection') or not doc.get('research_governance'):
+            raise ValueError('partition_window_governance_missing')
+        for audit in doc['window_selection']:
+            selected=audit['selected_window'];original=audit['resolved_requested_window']
+            if audit['window_mode']!=mode or selected is None or instant(selected['start'])<instant(original['start']) or instant(selected['end_exclusive'])>instant(original['end_exclusive']):
+                raise ValueError('partition_selected_window_outside_request')
+            if mode=='FIXED_WINDOW' and selected!=original:
+                raise ValueError('fixed_partition_window_was_shifted')
     for group in doc['groups']:
         previous=None
         if doc['configuration']['selection_policy']=='COMMON_CALENDAR' and group['assets']!=doc['configuration']['assets']:
@@ -84,6 +94,10 @@ def unpack_keys(pin,maximum_records):
 
 
 def load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0,purpose='evaluate',joint=True,context=False):
+    return _load_plan_phase(reader,manifest_id,phase,asset,dataset=dataset,fold=fold,purpose=purpose,joint=joint,context=context,release=True)
+
+
+def _load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0,purpose='evaluate',joint=True,context=False,release):
     from .partition_algorithm import canonical
     doc=read_plan(reader.data_dir,manifest_id);config=doc['configuration'];asset=canonical(asset)
     if phase not in ('training','validation','test') or dataset not in config['datasets'] or asset not in config['assets'] or type(fold) is not int or fold<0:
@@ -137,9 +151,16 @@ def load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0,
     expected=artifacts['context' if context else 'samples']
     if len(result)!=expected['rows'] or row_hash(result[dataset_schema(dataset).names].to_dict('records'))!=expected['sha256']:
         raise ValueError('partition_phase_records_changed')
+    from .partition_governance import freeze_plan,record_use,governance_status
+    governed=doc['algorithm_version']==ALGORITHM_VERSION
+    if governed and release and config['mode']=='research':freeze_plan(reader,manifest_id)
+    if governed and release and phase=='test' and not context:
+        record_use(reader,manifest_id,phase=phase,asset=asset,dataset=dataset,fold=fold,purpose=purpose)
+    governance=governance_status(reader,manifest_id) if governed else dict(frozen=False,holdout_status='LEGACY_USE_HISTORY_UNKNOWN')
     result.attrs.update(partition_plan=manifest_id,phase=phase,fold=fold,purpose=purpose,
         context_only=context,start=start,end_exclusive=end,evaluation_cutoff=doc['evaluation_cutoff'],
-        selection_policy=config['selection_policy'],untouched_out_of_sample=phase=='test',
+        selection_policy=config['selection_policy'],untouched_out_of_sample=False,out_of_sample=phase=='test',
+        window_mode=config.get('window_mode','LEGACY_AUTO_WINDOW'),research_window_frozen=governance['frozen'],holdout_status=governance['holdout_status'],
         out_of_sample_scope='this fold only; later walk-forward fits may use earlier observations',
         label_support_end=part['label_support_end'],model_fit_allowed=phase=='training' and purpose=='fit',
         fitting_scope='training only; arbitrary caller model code is not inspected',deployment_authorized=False)
@@ -149,10 +170,16 @@ def load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0,
 def validate_plan(reader,manifest_id,*,joint=True):
     """Read-only whole-plan revalidation before a research/validation workflow."""
     doc=read_plan(reader.data_dir,manifest_id);checked=0
+    from .partition_governance import governance_status
+    governance=governance_status(reader,manifest_id)
+    if doc['algorithm_version']==ALGORITHM_VERSION and governance['registered_manifest_id'] not in (None,manifest_id):
+        raise ValueError('research_window_already_frozen_for_identifier')
     for group in doc['groups']:
         for phase in ('training','validation','test'):
             for asset in group['assets']:
                 for dataset in doc['configuration']['datasets']:
-                    load_plan_phase(reader,manifest_id,phase,asset,dataset=dataset,fold=group['fold'],joint=joint)
+                    _load_plan_phase(reader,manifest_id,phase,asset,dataset=dataset,fold=group['fold'],joint=joint,release=False)
                     checked+=1
-    return dict(status='READY',manifest_id=manifest_id,phase_asset_datasets_verified=checked,deployment_authorized=False)
+    return dict(status='READY',manifest_id=manifest_id,phase_asset_datasets_verified=checked,
+        research_window_frozen=governance['frozen'],holdout_status=governance['holdout_status'],
+        registration_required_before_research_access=doc['algorithm_version']==ALGORITHM_VERSION and doc['configuration']['mode']=='research' and not governance['frozen'],deployment_authorized=False)

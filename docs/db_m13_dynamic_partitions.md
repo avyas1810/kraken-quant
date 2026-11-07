@@ -31,7 +31,9 @@ no unknown exchange identity or listing date is invented.
 
 All defaults are versioned in the manifest configuration:
 
-* Algorithm `common-calendar-v1`, manifest contract 1.
+* Algorithm `common-calendar-v2`, manifest contract 1 (the original v1 plans remain readable).
+* `FIXED_WINDOW` is the safe default: explicit start and exact grid-aligned bounds
+  are required. `AUTO_WINDOW` must be requested explicitly.
 * COMMON_CALENDAR, research mode, raw `prices_1m`, one-minute frequency.
 * Calendar envelope proportions 0.60 / 0.20 / 0.20; minimum one genuine observation
   and one calendar minute in **each phase for each asset and dataset**.
@@ -56,6 +58,10 @@ using M12. A future production caller chooses the same explicit data-vintage pol
    every selected asset and required dataset at the cutoff.
 2. Derive the common available interval, apply optional event bounds and reserve
    explicit feature/reference warmup. Align boundaries to the UTC epoch/frequency.
+   This describes AUTO_WINDOW. FIXED_WINDOW never clips, aligns or shifts the
+   requested envelope: unaligned requests reject, unavailable history/context
+   rejects, and phase minima/quality are checked on the original dates. Prior
+   context can be loaded before the envelope without moving its sample start.
 3. Verify original records and source dependencies through `ResearchData`.
 4. Intersect per-asset M12 admissibility masks. Strict observed grids, complete-source
    requirements, excessive unknown gaps and excessive staleness can split history
@@ -79,6 +85,62 @@ runs out without a valid result, the response is INVALID_CONFIGURATION, not a
 claim that no valid research window could exist. Increase the budget or narrow
 the period explicitly. Otherwise failed requests explain the actual attempted
 asset/phase requirements and observed limitations.
+
+### Window selection governance
+
+FIXED_WINDOW makes exactly one attempt on the requested calendar envelope. It
+does not retry a recent suffix or change the anchor when a phase is insufficient.
+An explicit rolling schedule still uses its configured durations/step inside
+that envelope; unused schedule/context/label/purge/embargo periods are reported
+separately, not disguised as automatic window selection.
+
+AUTO_WINDOW may choose a shorter sufficient common period using only source
+availability, timestamps, counts and M12 data quality. Every result reports
+`window_selection`: original and resolved requested windows, common available
+window, selected window (null on rejection), excluded periods and reasons, phase
+guard exclusions, candidate attempts/failures and per-asset/dataset/phase
+sufficiency. Unknown or budget-limited results have null counts rather than
+invented observations. No returns, strategy scores or performance objective is
+accepted as a selection input. Requested thresholds and assets never change.
+
+For research, a successful plan is already immutable **before evaluation**.
+Additionally, `freeze_partition_plan(id)` registers that exact manifest under its
+stable research identifier. Guarded release of any new-v2 research phase performs
+this registration automatically **before returning data**, including training
+data on which a caller could calculate performance. Explicit registration before
+fitting is recommended. Integrity-only `validate_partition_plan` remains read-only
+and neither registers the study nor marks test exposure.
+
+Registration uses the existing process lock and immutable atomic writer. The
+identifier binds to one manifest/configuration/phase layout. Identical later
+requests reopen that frozen version, even with a later creation clock. A changed
+window, universe, cutoff, policy or thresholds under that identifier rejects;
+there is no API to unfreeze/reset it. Before registration, a changed request creates
+a new immutable candidate manifest. After registration, a genuinely new,
+preregistered study/version requires a new identifier and a new manifest. Old
+boundaries, source hashes and use history are retained permanently.
+
+Registration and use records live in ignored `data/partition_plans/governance/`.
+These are new audit sidecars, not changes to SQLite, Parquet, original manifests
+or raw observations. Guarded M13 data release writes these sidecars; ordinary
+M11/M12/raw reads and integrity validation remain data-read-only.
+
+Loading actual test samples records first exposure. Frames distinguish
+`out_of_sample` from `untouched_out_of_sample`: the latter is never certified by
+this API. `record_partition_feedback(id, reason)` permanently records that test
+results informed development; `partition_governance_status(id)` exposes the state.
+**An immutable test partition is not an untouched holdout once its results have
+influenced strategy development.** Recreating the same dates, changing a strategy
+name or writing a new manifest does not restore scientific independence.
+
+These guards cover the supported API and honest stable identifiers. They cannot
+detect arbitrary external Python/SQL reads, undeclared strategy feedback, manual
+deletion of local audit files, or renaming the same study to evade registration.
+New genuinely independent holdout data and external preregistration discipline
+remain the researcher's responsibility. No financial performance is calculated
+or stored by this implementation. Production-validation schedules retain explicit
+versioned configuration; reusing an already registered research identifier cannot
+bypass its registration by merely changing modes.
 
 Statuses: READY, INSUFFICIENT_HISTORY, INSUFFICIENT_OBSERVATIONS,
 INSUFFICIENT_DATA_QUALITY, NO_COMMON_WINDOW, SOURCE_UNAVAILABLE,
@@ -147,6 +209,7 @@ reader = ResearchData('data')
 request = PartitionRequest(
     assets=('BTC/AUD', 'ETH/AUD', 'SOL/AUD'),
     identifier='user-experiment-001', cutoff=reader.as_of,
+    window_mode='AUTO_WINDOW',  # opt into data-only period adjustment
     start='2024-06-01T00:00:00Z', end='2024-07-01T00:00:00Z',
     frequency=timedelta(hours=1),  # evidence buckets; raw minute candles unchanged
     minimum_observations=(10, 10, 10),
@@ -158,11 +221,15 @@ if not plan.ready:
     print(plan.status, plan.report['failures'])
 else:
     reader.validate_partition_plan(plan.manifest_id)  # read-only whole-plan check
+    print(plan.report['window_selection'])
+    reader.freeze_partition_plan(plan.manifest_id)  # before fitting/performance evaluation
     train = reader.load_partition_phase(plan.manifest_id, 'training', 'BTC/AUD', purpose='fit')
     valid = reader.load_partition_phase(plan.manifest_id, 'validation', 'BTC/AUD')
     test = reader.load_partition_phase(plan.manifest_id, 'test', 'BTC/AUD')
     # If configured, load historical feature context separately:
     context = reader.load_partition_phase(plan.manifest_id, 'training', 'BTC/AUD', context=True, purpose='features')
+    # If holdout results later influence development, record that fact:
+    # reader.record_partition_feedback(plan.manifest_id, 'Test results informed the next strategy revision.')
 ```
 
 The example selects raw observations for inspection. It does not implement a
@@ -185,7 +252,7 @@ plans cannot authorize execution-cost studies or live trading. Research callers
 must choose requirements before inspecting strategy performance; no financial
 performance was examined during this implementation.
 
-## Actual stored-data examples
+## Actual stored-data examples (original pre-governance v1 plans)
 
 These are **real persisted Kraken observations**, not the synthetic test fixtures.
 The retrospective event window is June 2024; the evaluation/knowledge cutoff is
@@ -233,7 +300,7 @@ Result: **INSUFFICIENT_HISTORY**, with additional exact observation failures and
 **no executable manifest**. The common window does not borrow older BTC history
 that AUDX lacks. These are observed data bounds, not an invented formal listing date.
 
-Final focused suites: **148 passed**, including **34 M13 cases**. Complete offline
+Initial M13 focused suites: **148 passed**, including **34 M13 cases**. Complete offline
 suite: **1,004 passed, 7 skipped in 396.01 seconds**. The skips are existing opt-in
 or platform checks. All **2,446 protected files** retained their SHA-256 hashes;
 SQLite integrity is `ok` and foreign-key violations are zero. No canonical record,
@@ -243,3 +310,25 @@ reported on the PR and in delivery.
 Cold source verification can be expensive because existing provenance validators
 rehash original artifacts. Bounded windows/budgets are deliberate; this release
 does not introduce an unsafe persistent checksum cache or another data store.
+
+### Governance revision compatibility
+
+The original v1 manifests above retain their exact bytes, boundaries and source
+hashes. They remain readable with `LEGACY_USE_HISTORY_UNKNOWN`, not a newly invented
+untouched-holdout certificate. M11's original partition reader and all M12
+continuity interfaces are unchanged. Legacy metadata flags are not proof that a
+test result has never influenced strategy development.
+
+Regression cases now cover fixed-window failure despite a usable later period,
+explicit automatic adjustment and exclusion evidence, unchanged fixed dates,
+unavailable initial history, rejected automatic requests, phase sufficiency,
+pre-access registration, frozen-version reuse, changed-request rejection,
+read-only integrity checks, recorded holdout exposure/feedback, rolling schedules
+and old manifest compatibility. Final revised test/CI counts accompany delivery.
+
+Governance revision verification: **47 partition tests passed**; the focused
+partition/continuity/historical/export suites passed **161 tests**. The full offline
+suite finished with **1,017 passed, 7 existing skips in 230.82 seconds**. All
+**2,448 protected files**, including the two original M13 manifests, retained their
+hashes. Both real v1 plan files remain readable with their original boundaries
+and source references. No market observations, notebooks or old manifests changed.

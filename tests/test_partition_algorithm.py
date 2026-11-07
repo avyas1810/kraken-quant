@@ -44,7 +44,7 @@ def make(data_dir):
 
 def request(**changes):
     return replace(PartitionRequest(('BTC/AUD','ETH/AUD'),'synthetic-joint',NOW,frequency=HOUR,
-        minimum_observations=(3,3,3),minimum_durations=(HOUR,HOUR,HOUR)),**changes)
+        minimum_observations=(3,3,3),minimum_durations=(HOUR,HOUR,HOUR),window_mode='AUTO_WINDOW'),**changes)
 
 
 def generate(reader,**changes):
@@ -144,7 +144,7 @@ def test_newly_known_observations_change_cutoff_boundaries(data_dir):
     clock.sleep(180);c.collect(all_aud=True)
     reader=ResearchData(data_dir,as_of=clock(),clock=clock)
     req=PartitionRequest(('BTC-AUD','ETH-AUD'),'cutoff-test',old,
-        proportions=(Decimal('.34'),Decimal('.34'),Decimal('.32')))
+        proportions=(Decimal('.34'),Decimal('.34'),Decimal('.32')),window_mode='AUTO_WINDOW')
     first=only_group(reader.generate_partition_plan(req))
     second=only_group(reader.generate_partition_plan(replace(req,cutoff=clock())))
     assert first['phases']['training']['end_exclusive']<second['phases']['training']['end_exclusive']
@@ -188,7 +188,7 @@ def test_rolling_folds_each_validated(make):
     for i,g in enumerate(plan.report['groups']):
         assert g['fold']==i
         assert len(reader.load_partition_phase(plan.manifest_id,'test','ETH-AUD',fold=i))==24
-    assert generate(reader,rolling=replace(roll,folds=10)).status=='INSUFFICIENT_HISTORY'
+    assert generate(reader,rolling=replace(roll,folds=10),identifier='insufficient-rolling-study').status=='INSUFFICIENT_HISTORY'
     assert generate(reader,rolling=replace(roll,step=HOUR)).status=='INVALID_CONFIGURATION'
 
 
@@ -282,3 +282,146 @@ def test_missing_pinned_data_fails_revalidation(make):
     reader.store.partition_path('ETH-AUD','prices_1m','2026-09').unlink()
     with pytest.raises(ValueError):
         reader.validate_partition_plan(plan.manifest_id)
+
+
+def test_fixed_window_rejects_instead_of_selecting_recent_sufficient_suffix(make):
+    reader=make(offsets={'BTC-AUD':0,'ETH-AUD':0},missing=range(1,200))
+    req=request(start=START,end=START+240*HOUR,minimum_observations=(5,5,5),window_mode='FIXED_WINDOW')
+    fixed=reader.generate_partition_plan(req)
+    assert fixed.status=='INSUFFICIENT_OBSERVATIONS' and fixed.manifest_id is None
+    audit=fixed.report['window_selection'][0]
+    assert audit['selected_window'] is None and len(audit['selection_attempts'])==1
+    assert audit['selection_attempts'][0]['start'].startswith('2026-09-01T00:00')
+    assert audit['selection_attempts'][0]['end_exclusive'].startswith('2026-09-11T00:00')
+    auto=reader.generate_partition_plan(replace(req,window_mode='AUTO_WINDOW'))
+    assert auto.ready,auto.report
+    audit=auto.report['window_selection'][0]
+    assert audit['requested_window']['start'].startswith('2026-09-01T00:00')
+    assert audit['selected_window']['start'].startswith('2026-09-09T08:00')
+    assert audit['excluded_periods'][0]['reason']=='availability_or_quality_window_search'
+    assert audit['excluded_periods'][0]['end_exclusive']==audit['selected_window']['start']
+    assert len(audit['selection_attempts'])>1
+    assert len(audit['per_asset_sufficiency'])==6 and all(r['passed'] for r in audit['per_asset_sufficiency'])
+
+
+def test_fixed_window_preserves_requested_dates_and_uses_prior_context(make):
+    reader=make()
+    req=request(start=START+60*HOUR,end=START+240*HOUR,window_mode='FIXED_WINDOW',
+        feature_lookback=2*HOUR,reference_lookback=2*HOUR)
+    plan=reader.generate_partition_plan(req);group=only_group(plan)
+    assert group['candidate_start'].startswith('2026-09-03T12:00')
+    assert group['candidate_end_exclusive'].startswith('2026-09-11T00:00')
+    audit=plan.report['window_selection'][0]
+    assert audit['selected_window']==audit['resolved_requested_window']
+    assert audit['excluded_periods']==[]
+    context=reader.load_partition_phase(plan.manifest_id,'training','ETH-AUD',context=True)
+    assert context['timestamp'].max()<START+60*HOUR
+
+
+def test_fixed_envelope_before_new_asset_history_rejects_without_clipping(make):
+    reader=make()
+    plan=generate(reader,start=START,end=START+240*HOUR,window_mode='FIXED_WINDOW')
+    assert plan.status=='INSUFFICIENT_HISTORY' and not plan.ready
+    assert any(f.get('asset')=='ETH-AUD' and f.get('phase')=='envelope' for f in plan.report['failures'])
+    audit=plan.report['window_selection'][0]
+    assert audit['selected_window'] is None
+    assert audit['selection_attempts'][0]['start'].startswith('2026-09-01T00:00')
+    assert all(not r['passed'] for r in audit['per_asset_sufficiency'] if r['asset']=='ETH-AUD')
+
+
+def test_auto_records_common_history_exclusions_and_rejected_sufficiency(make):
+    reader=make()
+    good=generate(reader,start=START,end=START+240*HOUR)
+    audit=good.report['window_selection'][0]
+    assert audit['excluded_periods'][0]['reason']=='before_common_history_alignment_or_warmup'
+    assert audit['excluded_periods'][0]['end_exclusive'].startswith('2026-09-03T00:00')
+    bad=generate(reader,start=START,end=START+240*HOUR,minimum_observations=(1000,1000,1000))
+    assert not bad.ready and bad.manifest_id is None
+    audit=bad.report['window_selection'][0]
+    assert audit['selected_window'] is None and audit['per_asset_sufficiency']
+    assert all(not item['passed'] for item in audit['per_asset_sufficiency'])
+
+
+@pytest.mark.parametrize('changes',[
+    dict(window_mode='SEARCH_BEST_RETURN'),dict(window_mode='FIXED_WINDOW'),
+    dict(window_mode='FIXED_WINDOW',start=START+timedelta(minutes=30),end=START+240*HOUR),
+])
+def test_invalid_window_modes_or_unaligned_fixed_requests(make,changes):
+    assert generate(make(),**changes).status=='INVALID_CONFIGURATION'
+
+
+def test_fixed_is_safe_default_and_auto_is_explicit():
+    assert PartitionRequest(('BTC-AUD',),'default',NOW).window_mode=='FIXED_WINDOW'
+
+
+def test_frozen_research_blocks_reselection_but_reopens_original_version(make):
+    reader=make();req=request();plan=reader.generate_partition_plan(req)
+    alternate=reader.generate_partition_plan(replace(req,proportions=(Decimal('.5'),Decimal('.25'),Decimal('.25'))))
+    assert alternate.ready and alternate.manifest_id!=plan.manifest_id
+    path=reader.data_dir/'partition_plans/v1'/(plan.manifest_id+'.json');before=path.read_bytes()
+    freeze=reader.freeze_partition_plan(plan.manifest_id)
+    same=reader.freeze_partition_plan(plan.manifest_id)
+    assert same==freeze
+    advanced=ResearchData(reader.data_dir,as_of=NOW,clock=lambda:NOW+timedelta(days=2))
+    again=advanced.generate_partition_plan(req)
+    assert again.manifest_id==plan.manifest_id and again.content==plan.content
+    assert path.read_bytes()==before
+    blocked=advanced.generate_partition_plan(replace(req,assets=('BTC-AUD',)))
+    assert blocked.status=='INVALID_CONFIGURATION' and 'research_window_frozen' in blocked.report['failures'][0]['reason']
+    with pytest.raises(ValueError,match='already_frozen'):
+        reader.load_partition_phase(alternate.manifest_id,'training','BTC-AUD')
+    revised=advanced.generate_partition_plan(replace(req,identifier='preregistered-separate-study',assets=('BTC-AUD',)))
+    assert revised.ready and revised.manifest_id!=plan.manifest_id and path.read_bytes()==before
+
+
+def test_automatic_window_registered_before_access_and_test_use_not_untouched(make):
+    reader=make();plan=generate(reader)
+    assert not reader.partition_governance_status(plan.manifest_id)['frozen']
+    train=reader.load_partition_phase(plan.manifest_id,'training','BTC-AUD',purpose='fit')
+    assert train.attrs['research_window_frozen']
+    status=reader.partition_governance_status(plan.manifest_id)
+    assert status['frozen'] and status['registered_manifest_id']==plan.manifest_id
+    test=reader.load_partition_phase(plan.manifest_id,'test','BTC-AUD')
+    assert test.attrs['out_of_sample'] and not test.attrs['untouched_out_of_sample']
+    assert reader.partition_governance_status(plan.manifest_id)['holdout_status']=='EXPOSED_NOT_CERTIFIED_UNTOUCHED'
+    reader.record_partition_feedback(plan.manifest_id,'Test results informed subsequent strategy development.')
+    status=reader.partition_governance_status(plan.manifest_id)
+    assert status['holdout_status']=='RESULTS_INFLUENCED_DEVELOPMENT'
+    assert not status['untouched_holdout_certified']
+    reader.load_partition_phase(plan.manifest_id,'training','ETH-AUD')
+    assert reader.partition_governance_status(plan.manifest_id)['holdout_status']=='RESULTS_INFLUENCED_DEVELOPMENT'
+    assert not generate(reader,end=START+200*HOUR).ready
+
+
+def test_integrity_validation_is_read_only_and_not_performance_exposure(make):
+    reader=make();plan=generate(reader)
+    before={str(p):p.read_bytes() for p in reader.data_dir.rglob('*') if p.is_file()}
+    checked=reader.validate_partition_plan(plan.manifest_id)
+    after={str(p):p.read_bytes() for p in reader.data_dir.rglob('*') if p.is_file()}
+    assert before==after
+    assert checked['registration_required_before_research_access']
+    status=reader.partition_governance_status(plan.manifest_id)
+    assert not status['frozen'] and status['holdout_status']=='NO_USE_RECORDED_NOT_CERTIFIED_UNTOUCHED'
+
+
+def test_fixed_rolling_schedule_does_not_reanchor(make):
+    reader=make(offsets={'BTC-AUD':0,'ETH-AUD':0})
+    plan=generate(reader,window_mode='FIXED_WINDOW',start=START,end=START+240*HOUR,
+        rolling=RollingConfig((48*HOUR,24*HOUR,24*HOUR),24*HOUR,3))
+    assert plan.ready,plan.report
+    audit=plan.report['window_selection'][0]
+    assert audit['selected_window']==audit['resolved_requested_window']
+    assert len(plan.report['groups'])==3 and audit['phase_guard_exclusions']
+    assert plan.report['groups'][-1]['phases']['test']['end_exclusive']==audit['requested_window']['end_exclusive']
+
+
+def test_pre_governance_m13_manifest_still_reads_without_false_holdout_claim(make):
+    reader=make();plan=generate(reader)
+    from kraken_quant.historical_population import encoded,sha,immutable
+    doc=plan.report;doc['algorithm_version']='common-calendar-v1'
+    doc.pop('window_selection');doc.pop('research_governance');doc['configuration'].pop('window_mode')
+    raw=encoded(doc);ident=sha(raw)
+    immutable(reader.data_dir/'partition_plans/v1'/(ident+'.json'),raw)
+    frame=reader.load_partition_phase(ident,'test','BTC-AUD')
+    assert len(frame)>0 and frame.attrs['holdout_status']=='LEGACY_USE_HISTORY_UNKNOWN'
+    assert not frame.attrs['untouched_out_of_sample']
