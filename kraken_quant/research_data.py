@@ -67,11 +67,13 @@ def frame(rows,columns,timestamps=()):
 
 
 class ResearchData:
-    """Bind a data directory and knowledge-time cutoff; never initialize or write.
+    """Bind read-only canonical data and a knowledge-time cutoff.
 
     Market ranges are [start,end). Decimal columns remain Python Decimal objects.
     A historical event-time query defaults to information available now; pass an
     explicit as_of to restrict receipt knowledge time. No current-data fallback.
+    M13 research release/registration writes immutable governance sidecars only;
+    ordinary raw reads and integrity validation do not write market storage.
     """
     def __init__(self,data_dir=None,*,as_of=None,clock=lambda:datetime.now(timezone.utc)):
         self.data_dir=Path(data_dir) if data_dir is not None else load_config().data_dir
@@ -259,6 +261,30 @@ class ResearchData:
         """Fail closed on explicit continuity limits before releasing raw data."""
         from .market_continuity import MarketDataContinuity
         return MarketDataContinuity(self).release(request)
+
+    def generate_partition_plan(self,request):
+        from .partition_algorithm import PartitionAlgorithm
+        return PartitionAlgorithm(self).generate_partition_plan(request)
+
+    def load_partition_phase(self,manifest_id,phase,asset,**options):
+        from .partition_manifest import load_plan_phase
+        return load_plan_phase(self,manifest_id,phase,asset,**options)
+
+    def validate_partition_plan(self,manifest_id,**options):
+        from .partition_manifest import validate_plan
+        return validate_plan(self,manifest_id,**options)
+
+    def freeze_partition_plan(self,manifest_id):
+        from .partition_governance import freeze_plan
+        return freeze_plan(self,manifest_id)
+
+    def partition_governance_status(self,manifest_id):
+        from .partition_governance import governance_status
+        return governance_status(self,manifest_id)
+
+    def record_partition_feedback(self,manifest_id,reason):
+        from .partition_governance import record_use
+        return record_use(self,manifest_id,feedback=reason)
 
     def load_prices(self,pair,start,end)->pd.DataFrame:return self._load('prices_1m',pair,start,end)
     def load_quotes(self,pair,start,end)->pd.DataFrame:return self._load('quotes_1m',pair,start,end)
