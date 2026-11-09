@@ -91,7 +91,7 @@ def test_pipeline_order_reuses_existing_collectors(tmp_path,monkeypatch):
             assert kw['pair_ids']==['BTC-AUD']
             events.append('incremental');return dict(results=[dict(pair_id='BTC-AUD',status='ok')])
     monkeypatch.setattr(m,'OhlcvCollector',Collector)
-    def admission(*a,**k):events.append('admission');return [dict(admissible=False)]
+    def admission(*a,**k):events.append('admission');return dict(markets=[dict(admissible=False)],original_universe={},explicit_proposal={})
     monkeypatch.setattr(m,'research_audit',admission)
     config=dict(archive=str(archive),archive_sha256='a'*64,start_month='2026-07',end_month='2026-09',validate_research=True,
                 research_start='2026-07-01T00:00:00Z',research_end='2026-10-01T00:00:00Z')
@@ -132,3 +132,36 @@ def test_unsafe_operational_budgets_rejected_before_work(name,value):
     policy[name]=value
     with pytest.raises(ValueError,match='invalid_bounded'):
         validate_configuration(policy)
+
+def test_joint_proposal_preserves_original_rejection_and_fixed_dates(tmp_path,monkeypatch):
+    from datetime import timedelta
+    import pyarrow as pa
+    from kraken_quant import research_data,parquet_store
+    from kraken_quant.automated_collection import research_audit
+    from kraken_quant.partition_algorithm import phase_cuts
+    from kraken_quant.partition_contracts import PartitionRequest
+    start=datetime(2026,7,1,tzinfo=timezone.utc);end=datetime(2026,10,1,tzinfo=timezone.utc)
+    request=PartitionRequest(('A-USD','NEW-USD'),'fixture',datetime(2026,11,1,tzinfo=timezone.utc),frequency=timedelta(hours=1))
+    cuts=phase_cuts(request,start,end)
+    times=[cuts[i]+timedelta(minutes=n) for i,count in enumerate((1000,250,250)) for n in range(count)]
+    calls=[]
+    class Reader:
+        def __init__(self,*a,**k):pass
+        def generate_partition_plan(self,req):
+            calls.append(req)
+            ready=req.assets==('A-USD',)
+            quality={'groups':[dict(phases={phase:dict(assets={'A-USD':{'prices_1m':{'quality':{'passed':True}}}}) for phase in ('training','validation','test')})]} if ready else {'failures':[dict(asset='NEW-USD',reason='insufficient_history')]}
+            return SimpleNamespace(ready=ready,status='READY' if ready else 'INSUFFICIENT_HISTORY',manifest_id='a'*64 if ready else None,report=quality)
+    class Store:
+        def __init__(self,*a):pass
+        def months(self,*a):return ('2026-07','2026-08','2026-09')
+        def read(self,pair,dataset,month):
+            values=times if pair=='A-USD' else [end-timedelta(minutes=1)]
+            return pa.table({'timestamp':pa.array([v for v in values if v.strftime('%Y-%m')==month],type=pa.timestamp('us',tz='UTC'))})
+    monkeypatch.setattr(research_data,'ResearchData',Reader);monkeypatch.setattr(parquet_store,'MonthlyParquetStore',Store)
+    report=research_audit(tmp_path,[dict(pair_id='A-USD'),dict(pair_id='NEW-USD')],start=start,end=end,now=datetime(2026,11,1,tzinfo=timezone.utc))
+    assert [r.assets for r in calls]==[('A-USD','NEW-USD'),('A-USD',)]
+    assert all(r.start==start and r.end==end and r.window_mode=='FIXED_WINDOW' for r in calls)
+    assert report['original_universe']['status']=='INSUFFICIENT_HISTORY'
+    assert report['explicit_proposal']['excluded'][0]['pair_id']=='NEW-USD'
+    assert [r['admissible'] for r in report['markets']]==[True,False]

@@ -134,30 +134,60 @@ def months(start,end):
         value=datetime(value.year+1,1,1) if value.month==12 else datetime(value.year,value.month+1,1)
 
 
-def research_audit(data_dir, assets, *, start, end, now=None):
-    """Explicit event-time price study policy; not dense-grid or execution approval."""
+def research_audit(data_dir, assets, *, start, end, now=None, pair_limit=50, record_budget=5_000_000):
+    """One joint admission, with explicit rejected-universe and proposal governance."""
+    from dataclasses import replace
     from .research_data import ResearchData
-    from .market_continuity import ContinuityRequest,ContinuityRequirements,DataPolicy
-    from .partition_contracts import PartitionRequest
-    now=now or datetime.now(timezone.utc); results=[]
+    from .market_continuity import ContinuityRequirements
+    from .partition_contracts import PartitionRequest,PHASES
+    from .partition_algorithm import phase_cuts
+    from .parquet_store import MonthlyParquetStore
+    now=now or datetime.now(timezone.utc);reader=ResearchData(data_dir,as_of=now)
+    request=PartitionRequest(assets=tuple(a['pair_id'] for a in assets),identifier='automated-archive-universe-v1',
+        cutoff=now,start=start,end=end,window_mode='FIXED_WINDOW',frequency=timedelta(hours=1),
+        minimum_observations=(1000,250,250),minimum_durations=(timedelta(days=30),timedelta(days=10),timedelta(days=10)),
+        continuity=ContinuityRequirements(require_source_complete=True,allow_verified_no_trade=True),
+        maximum_records=record_budget)
+    print('M13 original universe',len(assets),flush=True)
+    original=reader.generate_partition_plan(request)
+    cuts=phase_cuts(request,start,end);store=MonthlyParquetStore(data_dir);prechecks={};candidates=[]
     for asset in assets:
-        pair=asset['pair_id']
-        try:
-            reader=ResearchData(data_dir,as_of=now)
-            # FIXED_WINDOW is never shifted to make a market pass.
-            plan=reader.generate_partition_plan(PartitionRequest(assets=(pair,),identifier='automated-archive-price-admission-v1-'+pair,
-                cutoff=now,start=start,end=end,window_mode='FIXED_WINDOW',
-                frequency=timedelta(hours=1),minimum_observations=(1000,250,250),
-                minimum_durations=(timedelta(days=30),timedelta(days=10),timedelta(days=10)),
-                continuity=ContinuityRequirements(require_source_complete=True,allow_verified_no_trade=True)))
-            results.append(dict(pair_id=pair,admissible=plan.ready,
-                continuity=[part['assets'][pair]['prices_1m']['quality'] for group in plan.report.get('groups',[]) for part in group['phases'].values()],partition_status=plan.status,manifest_id=plan.manifest_id,
-                failures=plan.report.get('failures',[]),evaluated_as_of=sql_time(now),
-                limitations='Price EVENT_TIME replay only; not receipt-time simulation, dense minute studies, financial eligibility or execution readiness.'))
-        except Exception as error:
-            results.append(dict(pair_id=pair,admissible=False,error=type(error).__name__))
-        print('Research admission',pair,results[-1].get('partition_status',results[-1].get('error')),flush=True)
-    return results
+        pair=asset['pair_id'];counts=[0,0,0]
+        for month in store.months(pair,'prices_1m'):
+            if month<start.strftime('%Y-%m') or month>end.strftime('%Y-%m'):continue
+            table=store.read(pair,'prices_1m',month)
+            for i in range(3):
+                mask=pc.and_(pc.greater_equal(table['timestamp'],cuts[i]),pc.less(table['timestamp'],cuts[i+1]))
+                counts[i]+=pc.sum(pc.cast(mask,'int64')).as_py() or 0
+        failures=[dict(asset=pair,phase=PHASES[i],reason='insufficient_observations',available=counts[i],required=request.minimum_observations[i]) for i in range(3) if counts[i]<request.minimum_observations[i]]
+        prechecks[pair]=dict(counts=counts,failures=failures)
+        if not failures:candidates.append(pair)
+    count_qualified=list(candidates)
+    candidates=candidates[:pair_limit]
+    capacity_excluded=set(count_qualified)-set(candidates)
+    proposed=original if original.ready else None
+    if not original.ready and candidates:
+        print('M13 explicit count-qualified proposal',len(candidates),flush=True)
+        proposed=reader.generate_partition_plan(replace(request,assets=tuple(candidates),identifier='automated-archive-count-qualified-proposal-v1'))
+    proposed_report=proposed.report if proposed else {}
+    def summary(plan):
+        doc=proposed_report if plan is proposed else plan.report if plan else {}
+        return dict(status=plan.status,manifest_id=plan.manifest_id,failures=doc.get('failures',[]),window_selection=doc.get('window_selection',[])) if plan else dict(status='INSUFFICIENT_OBSERVATIONS',manifest_id=None)
+
+    admitted=set(request.assets if original.ready else candidates) if proposed and proposed.ready else set()
+    reports=[]
+    for asset in assets:
+        pair=asset['pair_id'];quality=[]
+        if pair in admitted:
+            quality=[part['assets'][pair]['prices_1m']['quality'] for group in proposed_report['groups'] for part in group['phases'].values()]
+        if pair in capacity_excluded:prechecks[pair]['failures']=[dict(asset=pair,reason='explicit_joint_validation_capacity',pair_limit=pair_limit)]
+        reports.append(dict(pair_id=pair,admissible=pair in admitted,continuity=quality,
+            partition_status='READY' if pair in admitted else 'NOT_EVALUATED_CAPACITY' if pair in capacity_excluded else 'INSUFFICIENT_OBSERVATIONS' if prechecks[pair]['failures'] else proposed.status if proposed else 'SOURCE_UNAVAILABLE',
+            manifest_id=proposed.manifest_id if pair in admitted else None,failures=prechecks[pair]['failures'] or (proposed_report.get('failures',[]) if proposed and not proposed.ready else []),
+            evaluated_as_of=sql_time(now),phase_observations=prechecks[pair]['counts'],
+            limitations='EVENT_TIME price study only; not dense-grid, receipt-time or execution readiness.'))
+    return dict(markets=reports,original_universe=dict(assets=request.assets,**summary(original)),
+        explicit_proposal=dict(assets=candidates,count_qualified_assets=count_qualified,pair_limit=pair_limit,record_budget=record_budget,excluded=[dict(pair_id=p,failures=v['failures']) for p,v in prechecks.items() if v['failures']],**summary(proposed)))
 
 
 def repair_jobs(data_dir, warnings, *, max_gaps=2, requests_per_gap=5):
@@ -209,8 +239,8 @@ def remember_gaps(data_dir, checkpoints, collector):
 
 def validate_configuration(config):
     bounds={'target_pairs':(50,100),'backfill_month_jobs':(0,12),'backfill_seconds':(0,900),
-            'gap_jobs':(0,10),'gap_requests':(1,20)}
-    defaults=dict(target_pairs=64,backfill_month_jobs=6,backfill_seconds=300,gap_jobs=2,gap_requests=5)
+            'gap_jobs':(0,10),'gap_requests':(1,20),'research_pair_limit':(50,100),'research_record_budget':(1,8_000_000)}
+    defaults=dict(target_pairs=64,backfill_month_jobs=6,backfill_seconds=300,gap_jobs=2,gap_requests=5,research_pair_limit=50,research_record_budget=5_000_000)
     for key,(low,high) in bounds.items():
         value=config.get(key,defaults[key])
         if type(value) is not int or not low<=value<=high:raise ValueError('invalid_bounded_'+key)
@@ -269,7 +299,8 @@ def run_cycle(data_dir, config):
         report['after']=inventory(root,selected);save()
         if config.get('validate_research',False):
             with (home/(ident+'-research.log')).open('w',encoding='utf-8') as out,redirect_stdout(out):
-                report['research']=research_audit(root,selected,start=read_time(config['research_start']),end=read_time(config['research_end']))
+                admission=research_audit(root,selected,start=read_time(config['research_start']),end=read_time(config['research_end']),pair_limit=config.get('research_pair_limit',50),record_budget=config.get('research_record_budget',5_000_000))
+            report['research']=admission.pop('markets');report['joint_research']=admission
             report['research_admissible_pairs']=sum(r['admissible'] for r in report['research'])
         report['status']='success' if not report['errors'] and all(r['status']=='ok' for r in report['incremental']['results']) and all(r['checkpoint_matches'] for r in report['after']['markets']) and report['after']['integrity']=='ok' and not report['after']['foreign_key_errors'] else 'partial'
     except Exception as error:report.update(status='failed');report['errors'].append(dict(code=type(error).__name__))
@@ -292,7 +323,7 @@ def main(argv=None):
         latest=json.loads((data/'automated_collection/latest.json').read_text())
         selected=[a for a in assets if a['pair_id'] in latest['selected_pairs']]
         with (data/'automated_collection/research-validation.log').open('w',encoding='utf-8') as out,redirect_stdout(out):
-            result=dict(research=research_audit(data,selected,start=read_time(config['research_start']),end=read_time(config['research_end'])))
+            result=research_audit(data,selected,start=read_time(config['research_start']),end=read_time(config['research_end']),pair_limit=config.get('research_pair_limit',50),record_budget=config.get('research_record_budget',5_000_000))
         _atomic_json(data/'automated_collection/research.json',payload(result))
     print(json.dumps(payload(result),indent=2));return int(result.get('status') in ('partial','failed'))
 

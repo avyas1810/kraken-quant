@@ -69,15 +69,25 @@ hourly candle, universal coverage threshold or executable reference price.
 
 M13 FIXED_WINDOW retains the requested envelope, 60/20/20 chronological calendar
 phases, minimum observations 1000/250/250 and minimum durations 30/10/10 days.
-Every phase reuses M12 checks. Results include rejections and their reasons.
+Every phase reuses M12 checks. The original full-universe request and its
+rejection are retained. Necessary per-phase observation counts use M13
+`phase_cuts`; they cannot grant readiness. A count-qualified proposal is a
+separate, explicitly reported COMMON_CALENDAR request with unchanged dates and
+thresholds. Only a successful joint plan admits its members. The explicit
+pilot joint proposal is capped at 50 pairs / five million selected records
+for this 16 GB machine. Count-qualified surplus pairs are explicitly
+NOT_EVALUATED_CAPACITY, not rejected as bad data. Collection still covers all 64.
+These capacity limits are configurable and never silently increased.
+Results include rejections and their reasons.
 This is scoped price-data admission, not all-ten-filter financial eligibility,
 current exchange permission at historical dates, dense-minute readiness,
 historical execution readiness, or permission to deploy a strategy.
 Existing M11/M12/M13 interfaces default to AUD. Optional quote selection is an
 explicit addition. New M13 plans pin completeness proofs as well as observation
 sources; old plans remain readable and are not rewritten. No performance is
-examined. A separate multi-asset request must pass COMMON_CALENDAR admission
-before a joint strategy can use its data; individual readiness is insufficient.
+examined. The pipeline
+requires COMMON_CALENDAR admission for the proposed joint universe; independent
+pair results cannot authorize joint strategy use.
 
 ## Budgets, Windows operation and reports
 

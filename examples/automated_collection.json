@@ -11,5 +11,7 @@
   "gap_warnings": ".shadow-runtime/ohlcv-scheduler/all-gap-warnings.json",
   "gap_jobs": 2,
   "gap_requests": 5,
-  "archive_sha256": "bc273e9027470b07d790a7fa4df9bb43f0dfc527c20c6ecae48402e123e7b1c7"
+  "archive_sha256": "bc273e9027470b07d790a7fa4df9bb43f0dfc527c20c6ecae48402e123e7b1c7",
+  "research_pair_limit": 50,
+  "research_record_budget": 5000000
 }

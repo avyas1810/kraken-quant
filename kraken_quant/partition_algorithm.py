@@ -22,6 +22,15 @@ def align(value, frequency, up=False):
     return EPOCH+(steps+int(up and bool(remainder)))*frequency
 
 
+def phase_cuts(request,left,right):
+    """Shared M13 calendar cuts; availability prechecks never allocate their own dates."""
+    if request.rolling:
+        return [left,left+request.rolling.durations[0],left+sum(request.rolling.durations[:2],timedelta(0)),right]
+    cells=(right-left)//request.frequency
+    n=int(Decimal(cells)*request.proportions[0]);m=int(Decimal(cells)*request.proportions[1])
+    return [left,left+n*request.frequency,left+(n+m)*request.frequency,right]
+
+
 def canonical(value):
     if not isinstance(value,str):
         raise ValueError('asset_identifiers_must_be_strings')
@@ -350,11 +359,7 @@ class PartitionAlgorithm:
         folds=[];failures=[]
         for fold,(left,right) in enumerate(windows):
             cells=(right-left)//request.frequency
-            if request.rolling:
-                cuts=[left,left+request.rolling.durations[0],left+sum(request.rolling.durations[:2],timedelta(0)),right]
-            else:
-                n=int(Decimal(cells)*request.proportions[0]);m=int(Decimal(cells)*request.proportions[1])
-                cuts=[left,left+n*request.frequency,left+(n+m)*request.frequency,right]
+            cuts=phase_cuts(request,left,right)
             phases={}
             for i,phase in enumerate(PHASES):
                 a=cuts[i]+(request.embargo if i else timedelta(0))
