@@ -165,6 +165,8 @@ def research_audit(data_dir, assets, *, start, end, now=None, pair_limit=50, rec
     count_qualified=list(candidates)
     candidates=candidates[:pair_limit]
     capacity_excluded=set(count_qualified)-set(candidates)
+    if original.ready:
+        candidates=list(request.assets);capacity_excluded=set()
     proposed=original if original.ready else None
     if not original.ready and candidates:
         print('M13 explicit count-qualified proposal',len(candidates),flush=True)
@@ -187,7 +189,7 @@ def research_audit(data_dir, assets, *, start, end, now=None, pair_limit=50, rec
             evaluated_as_of=sql_time(now),phase_observations=prechecks[pair]['counts'],
             limitations='EVENT_TIME price study only; not dense-grid, receipt-time or execution readiness.'))
     return dict(markets=reports,original_universe=dict(assets=request.assets,**summary(original)),
-        explicit_proposal=dict(assets=candidates,count_qualified_assets=count_qualified,pair_limit=pair_limit,record_budget=record_budget,excluded=[dict(pair_id=p,failures=v['failures']) for p,v in prechecks.items() if v['failures']],**summary(proposed)))
+        explicit_proposal=dict(assets=candidates,reuses_original=original.ready,count_qualified_assets=count_qualified,pair_limit=pair_limit,record_budget=record_budget,excluded=[dict(pair_id=p,failures=v['failures']) for p,v in prechecks.items() if v['failures']],**summary(proposed)))
 
 
 def repair_jobs(data_dir, warnings, *, max_gaps=2, requests_per_gap=5):
