@@ -394,7 +394,8 @@ class PartitionAlgorithm:
                             _,context_report=analyze(self._slice(frames[key],context_req.start-request.reference_lookback,a),context_req,asset,dataset,request.cutoff,sources[key])
                             if not context_report['passed']:failures.append(dict(status='INSUFFICIENT_DATA_QUALITY',asset=asset,dataset=dataset,phase=phase,fold=fold,reason='Feature lookback context fails admission.',details=context_report['failure_reasons']))
                         inputs=self._slice(frames[key],a-request.feature_lookback-request.reference_lookback,b)
-                        datasets[dataset]=dict(samples=pin_frame(selected,dataset),context=pin_frame(context,dataset),inputs=pin_frame(inputs,dataset),quality=report)
+                        datasets[dataset]=dict(samples=pin_frame(selected,dataset),context=pin_frame(context,dataset),inputs=pin_frame(inputs,dataset),quality=report,
+                            coverage_sources={w.source_id:w.source_hash for w in sources[key]})
                     phase_assets[asset]=datasets
                 phases[phase]=dict(start=a,end_exclusive=b,context_start=a-request.feature_lookback,
                     label_support_end=b+request.label_horizon,assets=phase_assets)

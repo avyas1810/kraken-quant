@@ -82,7 +82,7 @@ class PublicPolicy:
         self.sleep(seconds)
 
     def request(self,endpoint,params,fetch):
-        if endpoint not in ('OHLC','Depth','AssetPairs','Assets','FeeSchedule'):raise PipelineFailure('public_endpoint_not_allowed')
+        if endpoint not in ('OHLC','Depth','AssetPairs','Assets','FeeSchedule','Trades'):raise PipelineFailure('public_endpoint_not_allowed')
         for attempt in range(self.config.request_attempts):
             if self.monotonic()<self.cooldown_until:raise PipelineFailure('cycle_deferred_after_throttle')
             if self.total_requests>=self.config.max_requests_per_cycle or self.monotonic()>=self.deadline:raise PipelineFailure('cycle_request_budget_exhausted')

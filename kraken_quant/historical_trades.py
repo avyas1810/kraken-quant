@@ -37,7 +37,7 @@ def aggregate(pages,pair,start,end):
    lines.append(','.join(map(str,(stamp,prices[0],max(prices),min(prices),prices[-1],sum((v[1] for v in values),Decimal(0)),len(values))))+'\n')
  return ''.join(lines).encode()
 
-def fetch_gap(data_dir,pair,*,start,end,max_requests=1000,pace_seconds=1.2,transport=None,sleeper=time.sleep,prepare_only=False):
+def fetch_gap(data_dir,pair,*,start,end,max_requests=1000,pace_seconds=1.2,transport=None,sleeper=time.sleep,prepare_only=False, quote_currencies=("AUD",)):
  """Replay cursor-bound pages; retry restarts reuse immutable original responses.
 
  End is a fixed, completed UTC minute. Returns incomplete when budget exhausted.
@@ -47,13 +47,13 @@ def fetch_gap(data_dir,pair,*,start,end,max_requests=1000,pace_seconds=1.2,trans
  start=start.astimezone(UTC);end=end.astimezone(UTC)
  if start.second or start.microsecond or end.second or end.microsecond:raise ValueError('minute_aligned_trade_window_required')
  if max_requests<1 or pace_seconds<1:raise ValueError('bounded_paced_requests_required')
- assets,_,_=collection_universe(data_dir);asset=next((v for v in assets if v['pair_id']==pair),None)
+ assets,_,_=collection_universe(data_dir,quote_currencies);asset=next((v for v in assets if v['pair_id']==pair),None)
  if asset is None:raise ValueError('unverified_aud_pair')
- root=Path(data_dir);native=asset['kraken_pair_id'];symbol=asset['base_asset']+'/AUD'
+ root=Path(data_dir);native=asset['kraken_pair_id'];symbol=asset['base_asset']+'/'+asset['quote_asset']
  cursor=str(int(start.timestamp())*1000000000);pages=[];deps=[];complete=False;requests=0
  folder=root/'historical_imports/trades'/pair;folder.mkdir(parents=True,exist_ok=True)
  fetch=transport or (lambda endpoint,params:market_data.public_get(endpoint,params,exact_numbers=True))
- for _ in range(max_requests):
+ while requests < max_requests:
   path=folder/(cursor+'.json')
   if path.exists():
    cached=json.loads(path.read_text());cached_result=cached['body']['result']
@@ -84,8 +84,11 @@ def fetch_gap(data_dir,pair,*,start,end,max_requests=1000,pace_seconds=1.2,trans
   if next_cursor==cursor:break
   cursor=next_cursor
  if not complete:return dict(pair_id=pair,status='incomplete_request_budget_or_source_exhausted',pages=len(pages),requests=requests)
+ proof=dict(version=1,pair_id=pair,kraken_pair_id=native,symbol=symbol,start=start,end=end,
+            known_at=max(datetime.fromisoformat(p['received_at'].replace('Z','+00:00')) for p in pages),dependencies=deps)
+ immutable(root/'historical_imports/trade_windows'/(sha(encoded(proof))+'.json'),encoded(proof))
  raw=aggregate(pages,symbol,int(start.timestamp()),int(end.timestamp()))
- member=root/'historical_imports/constructed'/sha(raw)/(ALIASES.get(asset['base_asset'],asset['base_asset'])+'AUD_1.csv')
+ member=root/'historical_imports/constructed'/sha(raw)/(ALIASES.get(asset['base_asset'],asset['base_asset'])+asset['quote_asset']+'_1.csv')
  immutable(member,raw)
  if prepare_only:return dict(pair_id=pair,status='source_window_downloaded',member=str(member),pages=len(pages),requests=requests,dependencies=deps,coverage_end=end.isoformat())
  docs=import_csv(root,pair,member,source_url='https://api.kraken.com/0/public/Trades',archive_sha256=sha(encoded(deps)),coverage_end=end,source_kind='kraken_public_trades_ohlcv',dependencies=deps)

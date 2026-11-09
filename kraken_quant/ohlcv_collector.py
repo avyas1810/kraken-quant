@@ -35,7 +35,9 @@ def minute_start(value):
     return utc_timestamp(value).replace(second=0, microsecond=0)
 
 
-def collection_universe(data_dir):
+def collection_universe(data_dir, quote_currencies=("AUD",)):
+    if not quote_currencies or not set(quote_currencies) <= {"AUD", "USD", "USDT", "USDC", "EUR"}:
+        raise CollectionError("unsupported_quote_scope")
     """SQL selection is accepted only with consistent, positive spot provenance."""
     report = catalogue_report(data_dir)
     if report["audit_status"] != "current" or report["integrity_check"] != "ok":
@@ -45,13 +47,14 @@ def collection_universe(data_dir):
         raise CollectionError("catalogue_changed_during_selection")
     accepted = {row["pair_id"]: row for row in receipt["records"]}
     unresolved = {row["kraken_pair_id"] for row in receipt["unresolved"]}
-    selected = report["online_aud_spot_pairs"]
+    selected = [row for row in report["all_spot_pairs"] if row["quote_asset"] in quote_currencies
+                and row["status"] == "online" and row["last_seen"] == receipt["observed_at"]]
     for asset in selected:
         proof = accepted.get(asset["pair_id"], {})
         identity = proof.get("source_identity", {})
-        if (asset["quote_asset"] != "AUD" or asset["status"] != "online"
+        if (asset["quote_asset"] not in quote_currencies or asset["status"] != "online"
                 or proof.get("kraken_pair_id") != asset["kraken_pair_id"]
-                or proof.get("base_asset") != asset["base_asset"] or proof.get("quote_asset") != "AUD"
+                or proof.get("base_asset") != asset["base_asset"] or proof.get("quote_asset") != asset["quote_asset"]
                 or proof.get("status") != "online" or proof.get("last_seen") != asset["last_seen"]
                 or identity.get("requested_asset_class") != "currency"
                 or identity.get("aclass_base") != "currency" or identity.get("aclass_quote") != "currency"
@@ -330,8 +333,13 @@ class OhlcvCollector:
             last_success = {key:outcome[key] for key in ("checkpoint","last_marker","fetched_at")}
         _atomic_json(path, dict(source=self.source,kraken_pair_id=asset["kraken_pair_id"],last_attempt=outcome,last_success=last_success,totals=totals))
 
-    def collect(self, *, pair=None, all_aud=False):
-        assets,audit_id,unresolved_count = collection_universe(self.data_dir)
+    def collect(self, *, pair=None, all_aud=False, quote_currencies=("AUD",), pair_ids=None):
+        assets,audit_id,unresolved_count = collection_universe(self.data_dir, quote_currencies)
+        if pair_ids is not None:
+            requested = set(pair_ids)
+            if not requested or not requested <= {a["pair_id"] for a in assets}:
+                raise CollectionError("unverified_requested_market")
+            assets = [a for a in assets if a["pair_id"] in requested]
         if (pair is None) == (not all_aud):
             raise CollectionError("select_exactly_one_pair_or_all_aud")
         selected = assets if all_aud else [asset for asset in assets if asset["pair_id"] == pair]

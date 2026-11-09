@@ -18,7 +18,7 @@ from .historical_population import encoded, sha, dependency, source_records
 from .research_data import instant
 
 
-def archive_windows(reader, asset, dataset, start, end):
+def _archive_windows(reader, asset, dataset, start, end):
     from .market_continuity import SourceWindow
     if dataset != 'prices_1m':
         return (), []
@@ -102,3 +102,51 @@ def archive_windows(reader, asset, dataset, start, end):
                 windows.append(SourceWindow(left, right, doc['received_at'], path.relative_to(root).as_posix(),
                     digest(doc), times, complete=True, no_trade_semantics=True, domain_start=first, domain_end=source_end))
     return tuple(windows), []
+
+
+def trade_windows(reader, asset, dataset, start, end):
+    """Certify only complete checksum-pinned public trade cursor windows."""
+    if dataset != 'prices_1m':return (),[]
+    from .market_continuity import SourceWindow
+    from .historical_trades import aggregate
+    from decimal import Decimal
+    windows=[]
+    for path in sorted((reader.data_dir/'historical_imports/trade_windows').glob('*.json')):
+        name=path.relative_to(reader.data_dir).as_posix()
+        if reader.source_selection is not None and name not in reader.source_selection:continue
+        doc=json.loads(path.read_text())
+        if doc['pair_id']!=asset or instant(doc['known_at'])>reader.as_of:continue
+        left,right=instant(doc['start']),instant(doc['end'])
+        if left>=end or right<=start:continue
+        if not hasattr(reader,'_metadata'):raise ValueError('trade_metadata_adapter_required')
+        meta,error=reader._metadata(asset)
+        if error:return (),['trade_metadata_unavailable']
+        if sha(encoded(doc))!=path.stem or doc['version']!=1 or doc['kraken_pair_id']!=meta['kraken_pair_id'] or doc['symbol']!=meta['base_asset']+'/'+meta['quote_asset']:
+            raise ValueError('trade_window_identity_mismatch')
+        cursor=str(int(left.timestamp())*1000000000);pages=[]
+        for item in doc['dependencies']:
+            raw=dependency(reader.data_dir,item['path']).read_bytes()
+            if sha(raw)!=item['sha256']:raise ValueError('trade_window_dependency_changed')
+            page=json.loads(raw);result=page['body'].get('result',{})
+            if page['request_since']!=cursor or page['kraken_pair_id']!=doc['kraken_pair_id'] or page['body'].get('error')!=[] or set(result)!={doc['symbol'],'last'}:
+                raise ValueError('trade_window_cursor_mismatch')
+            next_cursor=str(result['last'])
+            if not next_cursor.isdigit() or int(next_cursor)<int(cursor):raise ValueError('trade_window_cursor_mismatch')
+            cursor=next_cursor;pages.append(page)
+        if not pages:raise ValueError('trade_window_empty_proof')
+        last=pages[-1];values=last['body']['result'][doc['symbol']]
+        if not (len(values)<1000 and instant(last['received_at'])>=right or values and max(Decimal(v[2]) for v in values)>=Decimal(str(right.timestamp()))):
+            raise ValueError('trade_window_not_complete')
+        known=max(instant(p['received_at']) for p in pages)
+        if known!=instant(doc['known_at']):raise ValueError('trade_window_knowledge_mismatch')
+        raw=aggregate(pages,doc['symbol'],int(left.timestamp()),int(right.timestamp()))
+        times=tuple(datetime.fromtimestamp(int(line.split(b',',1)[0]),timezone.utc) for line in raw.splitlines())
+        windows.append(SourceWindow(left,right,known,name,digest(doc),times,complete=True,
+            no_trade_semantics=True,domain_start=left,domain_end=right))
+    return tuple(windows),[]
+
+
+def archive_windows(reader, asset, dataset, start, end):
+    archive,errors=_archive_windows(reader,asset,dataset,start,end)
+    trades,trade_errors=trade_windows(reader,asset,dataset,start,end)
+    return archive+trades,errors+trade_errors
