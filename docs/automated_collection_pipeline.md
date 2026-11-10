@@ -172,3 +172,10 @@ BTC/USD since 2013). Domain endpoints must remain UTC and ordered, but the
 ten-year bounded-query limit applies to requested materialization, not source
 lifetime metadata. The fixed July?September query and all M12 requirements remain
 unchanged. No old manifest or source timestamp is rewritten by this correction.
+
+For non-rolling FIXED_WINDOW requests, M13 also performs a necessary physical
+phase-count/duration check before source/frame materialization. Counts use the
+existing shared calendar cuts, embargo, purge and label horizon. A deficit can
+only reject the entire request; sufficient counts never imply admission. Reports
+retain all assets, exact per-phase counts, unchanged dates and unevaluated quality
+status. Surviving requests still undergo the complete existing M12/source checks.

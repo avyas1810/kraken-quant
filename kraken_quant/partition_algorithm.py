@@ -271,6 +271,14 @@ class PartitionAlgorithm:
             budget+=cells*len(assets)*len(request.datasets)
             if budget>request.maximum_grid_cells:
                 return self._reject('INVALID_CONFIGURATION',[dict(reason='Grid work budget exceeded; narrow start/cutoff or explicitly raise maximum_grid_cells.',required_cells=budget)])
+            if fixed and request.rolling is None:
+                checks,necessary_failures=self._necessary_counts(reader,request,assets,left,right)
+                if necessary_failures:
+                    status='INSUFFICIENT_HISTORY' if any(f['status']=='INSUFFICIENT_HISTORY' for f in necessary_failures) else 'INSUFFICIENT_OBSERVATIONS'
+                    attempt=dict(start=left,end_exclusive=right,passed=False,reasons=necessary_failures,stage='necessary_count_precheck')
+                    audit=selection_audit(request,assets,index,available,None,[attempt],[],necessary_failures)
+                    audit['per_asset_sufficiency']=checks
+                    return self._reject(status,necessary_failures,audits+[audit])
             frames={};sources={};mask=[True]*cells;activity_gaps=[]
             load_start=left-request.feature_lookback-request.reference_lookback
             count=0
@@ -359,6 +367,36 @@ class PartitionAlgorithm:
         raw=encoded(body);ident=sha(raw)
         immutable(reader.data_dir/'partition_plans/v1'/(ident+'.json'),raw)
         return PartitionPlan('READY',ident,raw)
+
+    @staticmethod
+    def _necessary_counts(reader,request,assets,left,right):
+        """Physical counts only reject; source/M12 admission is still mandatory."""
+        import pyarrow.compute as pc
+        cuts=phase_cuts(request,left,right);checks=[];failures=[]
+        for asset in assets:
+            for dataset in request.datasets:
+                counts=[0,0,0]
+                for month in reader.store.months(asset,dataset):
+                    if not left.strftime('%Y-%m')<=month<=right.strftime('%Y-%m'):continue
+                    times=reader.store.read(asset,dataset,month)['timestamp']
+                    for i in range(3):
+                        a=cuts[i]+(request.embargo if i else timedelta(0))
+                        b=cuts[i+1]-request.label_horizon-(request.purge if i<2 else timedelta(0))
+                        if a<b:counts[i]+=pc.count_distinct(pc.filter(times,pc.and_(pc.greater_equal(times,a),pc.less(times,b)))).as_py()
+                for i,phase in enumerate(PHASES):
+                    a=cuts[i]+(request.embargo if i else timedelta(0));b=cuts[i+1]-request.label_horizon-(request.purge if i<2 else timedelta(0))
+                    required=max(request.minimum_observations[i],request.continuity.minimum_observations)
+                    duration=max(b-a,timedelta(0));short=duration<request.minimum_durations[i] or a>=b
+                    checks.append(dict(asset=asset,dataset=dataset,phase=phase,fold=0,passed=False,
+                        observation_count=counts[i],required_observations=required,count_sufficient=counts[i]>=required,
+                        available_seconds=duration.total_seconds(),required_seconds=request.minimum_durations[i].total_seconds(),
+                        reason='Necessary physical count only; quality/admission not evaluated.'))
+                    if short or counts[i]<required:
+                        failures.append(dict(status='INSUFFICIENT_HISTORY' if short else 'INSUFFICIENT_OBSERVATIONS',asset=asset,dataset=dataset,phase=phase,fold=0,
+                            required_observations=required,available_observations=counts[i],available_start=a,available_end_exclusive=b,
+                            required_seconds=request.minimum_durations[i].total_seconds(),available_seconds=duration.total_seconds(),
+                            reason='Necessary phase duration/physical observation minimum fails; dates and requirements unchanged.'))
+        return checks,failures
 
     @staticmethod
     def _slice(frame,start,end):
