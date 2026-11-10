@@ -224,3 +224,12 @@ def test_corrupted_validation_cache_never_admits(tmp_path):
     (folder/'research-cache.json').write_text(json.dumps(dict(cache_id='a'*64)))
     (folder/'research_cache'/('a'*64+'.json')).write_text('{"markets":[{"admissible":true}]}')
     assert cached_result(tmp_path,[],{}) is None
+
+
+def test_child_owned_utc_deadline_does_not_depend_on_scheduler_parent():
+    from datetime import timedelta
+    from kraken_quant.research_validation import enforce_worker_deadline
+    now=[datetime(2026,11,1,tzinfo=timezone.utc)];exits=[]
+    enforce_worker_deadline(now[0]+timedelta(seconds=2),clock=lambda:now[0],
+        sleep=lambda _:now.__setitem__(0,now[0]+timedelta(seconds=3)),terminate=lambda code:exits.append(code))
+    assert exits==[124]

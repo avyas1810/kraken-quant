@@ -129,7 +129,7 @@ Incremental checkpoint reconciliation validates every partition in Arrow;
 only incoming months are decoded for exact conflict/duplicate comparisons.
 This preserves full schema, key, finalized-candle and future-time checks.
 
-Heavy M13 work runs in a child with a UTC watchdog (default 1800 seconds), a
+Heavy M13 work runs in a child with a UTC watchdog (default 1800 seconds; operator example 3600 seconds), a
 separate validation lock and the same pinned code/environment. Timeout leaves
 research pending, never admitted, while completed collection remains recorded.
 A cycle older than two wall-clock hours fails instead of reporting fresh health.
@@ -145,3 +145,15 @@ are never rewritten. New out-of-window live candles do not change that fixed
 historical study. Cached reports retain their original evaluation cutoff and
 separately record the current input-verification time. They are not a fresh
 production-strategy validation or a newly untouched holdout.
+
+An impossible FIXED_WINDOW envelope now rejects immediately after the existing
+M13 source/identity index, before expensive phase materialization. The report
+retains the requested dates, exact unavailable envelope and unevaluated phase
+status. This necessary rejection cannot admit a market or select different dates.
+
+The validation child also enforces the UTC deadline itself. Windows may terminate
+the scheduled parent or the virtual-environment launcher without terminating the
+actual Python grandchild. The child guard therefore exits independently on expiry;
+no completed result or admission is fabricated. Source and manifest writes retain
+their existing atomic behavior. Existing older workers do not acquire this guard
+retroactively and may require authorized administrator cleanup.

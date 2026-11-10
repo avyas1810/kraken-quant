@@ -1,6 +1,6 @@
 ﻿"""Bounded, immutable validation snapshots for a fixed historical data request."""
 from datetime import datetime,timedelta,timezone
-import hashlib,json,os,subprocess,sys,time,uuid
+import hashlib,json,os,subprocess,sys,time,uuid,threading
 from pathlib import Path
 from .cost_storage import payload
 from .historical_population import encoded,immutable,sha,dependency
@@ -110,9 +110,9 @@ def bounded_validation(root,assets,config,*,clock=lambda:datetime.now(timezone.u
     home=root/'automated_collection';ident=uuid.uuid4().hex
     request=home/(ident+'-validation-request.json');result_path=home/(ident+'-validation-result.json')
     public_config={k:config[k] for k in (*POLICY_KEYS,'archive') if k in config}
-    _atomic_json(request,payload(dict(data_dir=str(root.resolve()),assets=assets,config=public_config,result_path=str(result_path.resolve()))))
-    environment=dict(os.environ);environment['PYTHONPATH']=str(Path(__file__).resolve().parents[1])
     deadline=clock()+timedelta(seconds=config.get('research_validation_seconds',1800))
+    _atomic_json(request,payload(dict(data_dir=str(root.resolve()),assets=assets,config=public_config,result_path=str(result_path.resolve()),deadline=deadline)))
+    environment=dict(os.environ);environment['PYTHONPATH']=str(Path(__file__).resolve().parents[1])
     with (home/(ident+'-validation-worker.log')).open('w',encoding='utf-8') as log:
         process=subprocess.Popen([sys.executable,'-m','kraken_quant.research_validation',str(request.resolve())],cwd=Path(__file__).resolve().parents[1],env=environment,stdout=log,stderr=log)
         while process.poll() is None:
@@ -124,8 +124,17 @@ def bounded_validation(root,assets,config,*,clock=lambda:datetime.now(timezone.u
                 original_universe=dict(status='PENDING_VALIDATION'),explicit_proposal=dict(status='PENDING_VALIDATION'),validation_pending=True)
 
 
+def enforce_worker_deadline(deadline,*,clock=lambda:datetime.now(timezone.utc),sleep=time.sleep,terminate=os._exit):
+    """Child-owned guard survives loss of the scheduler/venv launcher parent."""
+    while clock()<deadline:sleep(1)
+    terminate(124)
+
+
 def worker(path):
     request=json.loads(Path(path).read_text());root=Path(request['data_dir']);assets=request['assets'];config=request['config']
+    from .ohlcv_collector import read_time
+    deadline=read_time(request['deadline']) if request.get('deadline') else datetime.now(timezone.utc)+timedelta(seconds=min(3600,max(1,config.get('research_validation_seconds',1800))))
+    threading.Thread(target=enforce_worker_deadline,args=(deadline,),daemon=True).start()
     lock=ProcessLock(root/'automated_collection/research-validation')
     try:
         before=fingerprint(root,assets,config)

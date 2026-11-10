@@ -253,6 +253,16 @@ class PartitionAlgorithm:
             else:
                 left=align(max(first,request.start) if request.start else first,request.frequency,True)+request.feature_lookback+request.reference_lookback
                 right=align(min(request.end,last),request.frequency)
+            if fixed and bounds_failures:
+                # A failed mandatory envelope cannot be repaired by phase scans.
+                # Reject before materializing immutable source history; no dates
+                # or requirements change and no untested phase is called ready.
+                attempt=dict(start=left,end_exclusive=right,passed=False,reasons=bounds_failures,stage='envelope_precheck')
+                audit=selection_audit(request,assets,index,available,None,[attempt],[],bounds_failures)
+                audit['per_asset_sufficiency']=[dict(asset=a,dataset=d,passed=False,observation_count=None,
+                    reason='Phase admission not performed: fixed envelope is unavailable.',
+                    available_start=index[(a,d)][0],available_end=index[(a,d)][1]) for a in assets for d in request.datasets]
+                return self._reject('INSUFFICIENT_HISTORY',bounds_failures,audits+[audit])
             if left>=right:
                 reasons=[dict(assets=assets,start=left,end=right,reason='Selected assets/data types have no common calendar interval after context requirements.')]
                 return self._reject('NO_COMMON_WINDOW',reasons,audits+[selection_audit(request,assets,index,available,None,[],[],reasons)])
