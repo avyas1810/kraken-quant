@@ -286,17 +286,7 @@ def run_cycle(data_dir, config):
         report.update(catalogue_run_id=audit,eligible_aud_pairs=sum(a['quote_asset']=='AUD' for a in assets),
             expanded_verified_candidates=len(assets),selected_pairs=[a['pair_id'] for a in selected])
         report['before']=inventory(root,selected);save()
-        warnings_path=config.get('gap_warnings')
-        warnings=json.loads(Path(warnings_path).read_text()) if warnings_path and Path(warnings_path).exists() else []
-        queue_path=home/'gap-queue.json'
-        if queue_path.exists():warnings+=list(json.loads(queue_path.read_text()).values())
-        with (home/(ident+'-repair.log')).open('w',encoding='utf-8') as out,redirect_stdout(out):
-            report['gap_repairs']=repair_jobs(root,warnings,max_gaps=config.get('gap_jobs',2),requests_per_gap=config.get('gap_requests',5))
-        try:
-            with (home/(ident+'-backfill.log')).open('w',encoding='utf-8') as out,redirect_stdout(out):
-                report['backfill']=archive_jobs(root,archive,selected,start_month=config['start_month'],end_month=config['end_month'],
-                    max_months=config.get('backfill_month_jobs',6),seconds=config.get('backfill_seconds',300),expected_sha256=config.get('archive_sha256'))
-        except Exception as error:report['errors'].append(dict(task='backfill',code=type(error).__name__))
+        report['maintenance']=dict(status='deferred',command='maintenance',reason='Independent bounded operator work; never blocks scheduled incremental collection.')
         save();fresh()
         with connect_metadata(root,readonly=True) as db:
             prior_checkpoints=dict(db.execute("SELECT pair_id,latest_observation_at FROM ingestion_state WHERE dataset='prices_1m'"))
@@ -304,12 +294,7 @@ def run_cycle(data_dir, config):
         fresh()
         report['known_historical_gaps']=remember_gaps(root,prior_checkpoints,report['incremental'])
         report['after']=inventory(root,selected);save()
-        if config.get('validate_research',False) and all(r['status']=='ok' for r in report['incremental']['results']):
-            with (home/(ident+'-research.log')).open('w',encoding='utf-8') as out,redirect_stdout(out):
-                from .research_validation import bounded_validation
-                admission=bounded_validation(root,selected,config)
-            report['research']=admission.pop('markets');report['joint_research']=admission
-            report['research_admissible_pairs']=sum(r['admissible'] for r in report['research'])
+        report['research_validation']=dict(status='deferred',command='validate',reason='Separate fixed-window admission; not part of scheduled collection.')
         fresh()
         report['status']='success' if not report['errors'] and all(r['status']=='ok' for r in report['incremental']['results']) and all(r['checkpoint_matches'] for r in report['after']['markets']) and report['after']['integrity']=='ok' and not report['after']['foreign_key_errors'] else 'partial'
     except Exception as error:report.update(status='failed');report['errors'].append(dict(code=getattr(error,'code',type(error).__name__)))
@@ -319,13 +304,38 @@ def run_cycle(data_dir, config):
     return report
 
 
+def run_maintenance(data_dir,config):
+    """Explicit bounded archive/Trades work, outside the scheduled cycle lock."""
+    validate_configuration(config)
+    from .data_pipeline import PipelineConfig,PublicPolicy
+    from .market_data import PUBLIC_REQUEST_POLICY
+    root=Path(data_dir);home=root/'automated_collection';lock=ProcessLock(home/'maintenance')
+    policy=PublicPolicy(home,PipelineConfig(max_cycle_seconds=3600,max_requests_per_cycle=1000),lambda:datetime.now(timezone.utc),time.monotonic,time.sleep)
+    token=PUBLIC_REQUEST_POLICY.set(policy);started=datetime.now(timezone.utc)
+    try:
+        assets,_,_=collection_universe(root,QUOTES)
+        selected=set(json.loads((home/'universe.json').read_text())['pairs'])
+        assets=[a for a in assets if a['pair_id'] in selected]
+        warnings=[];path=config.get('gap_warnings')
+        if path and Path(path).exists():warnings+=json.loads(Path(path).read_text())
+        if (home/'gap-queue.json').exists():warnings+=list(json.loads((home/'gap-queue.json').read_text()).values())
+        repairs=repair_jobs(root,warnings,max_gaps=config.get('gap_jobs',2),requests_per_gap=config.get('gap_requests',5))
+        archive=Path(config['archive']);archive=archive if archive.is_absolute() else root/archive
+        imports=archive_jobs(root,archive,assets,start_month=config['start_month'],end_month=config['end_month'],max_months=config.get('backfill_month_jobs',6),seconds=config.get('backfill_seconds',300),expected_sha256=config['archive_sha256'])
+        result=payload(dict(started_at=started,finished_at=datetime.now(timezone.utc),repairs=repairs,archive=imports,public_requests=policy.events))
+        _atomic_json(home/'maintenance-latest.json',result)
+        return result
+    finally:PUBLIC_REQUEST_POLICY.reset(token);lock.close()
+
+
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=('once','status','validate'))
+    parser.add_argument('command',choices=('once','status','validate','maintenance'))
     parser.add_argument('--config',default='examples/automated_collection.json');parser.add_argument('--root',default='.')
     args=parser.parse_args(argv);root=Path(args.root).resolve();data=load_config(root).data_dir
     config=json.loads((root/args.config).read_text())
     if args.command=='once':result=run_cycle(data,config)
+    elif args.command=='maintenance':result=run_maintenance(data,config)
     elif args.command=='status':result=json.loads((data/'automated_collection/latest.json').read_text())
     else:
         assets,_,_=collection_universe(data,QUOTES)

@@ -9,9 +9,18 @@ An initialized metadata database and the retained official archive are required;
 missing/incompatible storage fails closed. No private endpoint is used. The fee,
 quote/book, financial eligibility, strategy and execution interfaces are unchanged.
 
-The operation is catalogue refresh → verified new-pair detection → bounded
-historical repair/import → incremental OHLCV → storage/coverage validation →
-research-universe report. It reuses `discover`, `collection_universe`,
+The six-hour operation is catalogue refresh, verified new-pair detection,
+incremental OHLCV, checkpoint/integrity validation and an operational report.
+Historical imports/Trades repair run only through the separate bounded command:
+
+`python -m kraken_quant.automated_collection maintenance --root . --config examples/automated_collection.json`
+
+M12/M13 research admission runs only through `validate`, with its own lock and
+UTC deadline. Neither historical maintenance nor research validation holds the
+routine pipeline lock. Existing per-partition atomic locks still serialize writes.
+The former `validate_research` option no longer adds blocking work to `once`;
+its report explicitly marks the work deferred. Admission is not inferred from a
+successful collection exit. The commands reuse `discover`, `collection_universe`,
 `OhlcvCollector`, `import_csv`, `fetch_gap`, `MonthlyParquetStore`, `PublicPolicy`,
 `ProcessLock`, M12 admission and M13 immutable fixed-window plans.
 
@@ -157,3 +166,9 @@ actual Python grandchild. The child guard therefore exits independently on expir
 no completed result or admission is fabricated. Source and manifest writes retain
 their existing atomic behavior. Existing older workers do not acquire this guard
 retroactively and may require authorized administrator cleanup.
+
+Source-history domains may legitimately exceed ten years (for example Kraken
+BTC/USD since 2013). Domain endpoints must remain UTC and ordered, but the
+ten-year bounded-query limit applies to requested materialization, not source
+lifetime metadata. The fixed July?September query and all M12 requirements remain
+unchanged. No old manifest or source timestamp is rewritten by this correction.

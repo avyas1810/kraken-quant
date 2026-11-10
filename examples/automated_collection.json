@@ -7,7 +7,7 @@
   "backfill_seconds": 300,
   "research_start": "2026-07-01T00:00:00Z",
   "research_end": "2026-10-01T00:00:00Z",
-  "validate_research": true,
+  "validate_research": false,
   "gap_warnings": ".shadow-runtime/ohlcv-scheduler/all-gap-warnings.json",
   "gap_jobs": 2,
   "gap_requests": 5,

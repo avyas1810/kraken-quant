@@ -98,8 +98,8 @@ def test_pipeline_order_reuses_existing_collectors(tmp_path,monkeypatch):
                 research_start='2026-07-01T00:00:00Z',research_end='2026-10-01T00:00:00Z')
     result=m.run_cycle(tmp_path,config)
     assert result['status']=='success'
-    assert events==['catalogue','backfill','incremental','admission']
-    assert result['research_admissible_pairs']==0
+    assert events==['catalogue','incremental']
+    assert result['research_validation']['status']=='deferred' and result['maintenance']['status']=='deferred'
 
 def test_enrolled_assets_are_not_dropped_when_archive_rank_changes():
     aud=dict(pair_id='BTC-AUD',base_asset='BTC',quote_asset='AUD')
@@ -233,3 +233,15 @@ def test_child_owned_utc_deadline_does_not_depend_on_scheduler_parent():
     enforce_worker_deadline(now[0]+timedelta(seconds=2),clock=lambda:now[0],
         sleep=lambda _:now.__setitem__(0,now[0]+timedelta(seconds=3)),terminate=lambda code:exits.append(code))
     assert exits==[124]
+
+
+def test_old_source_domain_does_not_expand_query_budget():
+    from datetime import timedelta
+    from kraken_quant.market_continuity import SourceWindow,ContinuityRequest
+    start=datetime(2026,7,1,tzinfo=timezone.utc);end=datetime(2026,10,1,tzinfo=timezone.utc)
+    source=SourceWindow(start,end,end,'official','a'*64,domain_start=datetime(2013,9,1,tzinfo=timezone.utc),domain_end=end)
+    assert source.domain_start.year==2013
+    with pytest.raises(ValueError,match='bounded_ordered_time_range_required'):
+        ContinuityRequest(('BTC-USD',),source.domain_start,end)
+    with pytest.raises(ValueError,match='ordered_source_domain_required'):
+        SourceWindow(start,end,end,'official','a'*64,domain_start=end,domain_end=start)
