@@ -241,8 +241,8 @@ def remember_gaps(data_dir, checkpoints, collector):
 
 def validate_configuration(config):
     bounds={'target_pairs':(50,100),'backfill_month_jobs':(0,12),'backfill_seconds':(0,900),
-            'gap_jobs':(0,10),'gap_requests':(1,20),'research_pair_limit':(50,100),'research_record_budget':(1,8_000_000)}
-    defaults=dict(target_pairs=64,backfill_month_jobs=6,backfill_seconds=300,gap_jobs=2,gap_requests=5,research_pair_limit=50,research_record_budget=5_000_000)
+            'gap_jobs':(0,10),'gap_requests':(1,20),'research_pair_limit':(50,100),'research_record_budget':(1,8_000_000),'research_validation_seconds':(1,3600)}
+    defaults=dict(target_pairs=64,backfill_month_jobs=6,backfill_seconds=300,gap_jobs=2,gap_requests=5,research_pair_limit=50,research_record_budget=5_000_000,research_validation_seconds=1800)
     for key,(low,high) in bounds.items():
         value=config.get(key,defaults[key])
         if type(value) is not int or not low<=value<=high:raise ValueError('invalid_bounded_'+key)
@@ -266,8 +266,12 @@ def run_cycle(data_dir, config):
     report=dict(run_id=ident,started_at=datetime.now(timezone.utc),status='running',errors=[])
     path=home/'runs'/(ident+'.json')
     def save():_atomic_json(path,payload(report));_atomic_json(home/'latest.json',payload(report))
+    def fresh():
+        if datetime.now(timezone.utc)-report['started_at']>timedelta(hours=2):
+            from .data_pipeline import PipelineFailure
+            raise PipelineFailure('cycle_wall_deadline_exceeded')
     try:
-        save()
+        save();fresh()
         with connect_metadata(root,readonly=True):pass
         OhlcvCollector(root)._binding()
         report['catalogue']=discover(root)
@@ -293,19 +297,22 @@ def run_cycle(data_dir, config):
                 report['backfill']=archive_jobs(root,archive,selected,start_month=config['start_month'],end_month=config['end_month'],
                     max_months=config.get('backfill_month_jobs',6),seconds=config.get('backfill_seconds',300),expected_sha256=config.get('archive_sha256'))
         except Exception as error:report['errors'].append(dict(task='backfill',code=type(error).__name__))
-        save()
+        save();fresh()
         with connect_metadata(root,readonly=True) as db:
             prior_checkpoints=dict(db.execute("SELECT pair_id,latest_observation_at FROM ingestion_state WHERE dataset='prices_1m'"))
         report['incremental']=OhlcvCollector(root).collect(all_aud=True,quote_currencies=QUOTES,pair_ids=report['selected_pairs'])
+        fresh()
         report['known_historical_gaps']=remember_gaps(root,prior_checkpoints,report['incremental'])
         report['after']=inventory(root,selected);save()
-        if config.get('validate_research',False):
+        if config.get('validate_research',False) and all(r['status']=='ok' for r in report['incremental']['results']):
             with (home/(ident+'-research.log')).open('w',encoding='utf-8') as out,redirect_stdout(out):
-                admission=research_audit(root,selected,start=read_time(config['research_start']),end=read_time(config['research_end']),pair_limit=config.get('research_pair_limit',50),record_budget=config.get('research_record_budget',5_000_000))
+                from .research_validation import bounded_validation
+                admission=bounded_validation(root,selected,config)
             report['research']=admission.pop('markets');report['joint_research']=admission
             report['research_admissible_pairs']=sum(r['admissible'] for r in report['research'])
+        fresh()
         report['status']='success' if not report['errors'] and all(r['status']=='ok' for r in report['incremental']['results']) and all(r['checkpoint_matches'] for r in report['after']['markets']) and report['after']['integrity']=='ok' and not report['after']['foreign_key_errors'] else 'partial'
-    except Exception as error:report.update(status='failed');report['errors'].append(dict(code=type(error).__name__))
+    except Exception as error:report.update(status='failed');report['errors'].append(dict(code=getattr(error,'code',type(error).__name__)))
     finally:
         report['finished_at']=datetime.now(timezone.utc);report['public_requests']=policy.events
         save();PUBLIC_REQUEST_POLICY.reset(token);lock.close()
@@ -324,9 +331,12 @@ def main(argv=None):
         assets,_,_=collection_universe(data,QUOTES)
         latest=json.loads((data/'automated_collection/latest.json').read_text())
         selected=[a for a in assets if a['pair_id'] in latest['selected_pairs']]
-        with (data/'automated_collection/research-validation.log').open('w',encoding='utf-8') as out,redirect_stdout(out):
-            result=research_audit(data,selected,start=read_time(config['research_start']),end=read_time(config['research_end']),pair_limit=config.get('research_pair_limit',50),record_budget=config.get('research_record_budget',5_000_000))
-        _atomic_json(data/'automated_collection/research.json',payload(result))
+        from .research_validation import worker
+        home=data/'automated_collection';request_path=home/(uuid.uuid4().hex+'-manual-validation-request.json')
+        result_path=home/'research.json'
+        _atomic_json(request_path,payload(dict(data_dir=str(data.resolve()),assets=selected,config=config,result_path=str(result_path.resolve()))))
+        with (home/'research-validation.log').open('w',encoding='utf-8') as out,redirect_stdout(out):worker(request_path)
+        result=json.loads(result_path.read_text())
     print(json.dumps(payload(result),indent=2));return int(result.get('status') in ('partial','failed'))
 
 if __name__=='__main__':raise SystemExit(main())

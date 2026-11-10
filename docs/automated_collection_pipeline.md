@@ -1,4 +1,4 @@
-﻿# Automated public Kraken OHLCV pipeline
+# Automated public Kraken OHLCV pipeline
 
 ## Scope and commands
 
@@ -31,7 +31,7 @@ Sources:
 
 - [Official Kraken OHLCVT archive](https://support.kraken.com/articles/360047124832-downloadable-historical-ohlcvt-open-high-low-close-volume-trades-data):
   the retained full ZIP covers first trades through 30 September 2026. The pilot
-  imports complete July–September months for new pairs. Older archive history
+  imports complete June–September months for new pairs. June provides genuine pre-window context; the research envelope remains July–September. Older archive history
   remains available but is outside this explicitly configured initial import.
 - [Kraken public historical Trades](https://support.kraken.com/articles/360029077772-python-code-to-retrieve-historical-time-and-sales-trading-history-):
   exact trade IDs and decimal values are replayed with `since`/`last` pagination.
@@ -114,5 +114,34 @@ convenience pointer; immutable source receipts remain in their existing folders.
 Data and local operator reports are ignored by Git. Frozen research artifacts,
 credentials, notebooks and the original read-only DuckDB viewer are not changed.
 
-Run offline regressions with `python -m pytest tests -q`; repository-root pytest
-also discovers an existing account-connectivity example and is not offline.
+Run offline regressions with `python -m pytest -q` (or explicitly `tests`).
+`pytest.ini` limits default discovery to tests, preventing interactive account
+examples from authenticating during ordinary test collection.
+
+
+## Resume and validation runtime safeguards
+
+A sleeping machine exposed a stale cycle and misleading budget errors. Public
+requests now enforce both monotonic and UTC wall deadlines, and retain the
+underlying budget-expiry code plus actual HTTP-request counts. Each response
+attempt's sanitized timing is journaled before a cycle can be interrupted.
+Incremental checkpoint reconciliation validates every partition in Arrow;
+only incoming months are decoded for exact conflict/duplicate comparisons.
+This preserves full schema, key, finalized-candle and future-time checks.
+
+Heavy M13 work runs in a child with a UTC watchdog (default 1800 seconds), a
+separate validation lock and the same pinned code/environment. Timeout leaves
+research pending, never admitted, while completed collection remains recorded.
+A cycle older than two wall-clock hours fails instead of reporting fresh health.
+Research work is deferred when collection has failed, allowing prompt recovery.
+
+Successful joint plans can be reused only as **the same immutable historical
+snapshot**. Verification fingerprints cover algorithm source, policy/universe,
+identity fields, relevant canonical partitions and source receipts, raw slices,
+trade dependencies, complete archive/member hashes, quality issues, pinned
+metadata and the plan itself. Inputs must remain unchanged during validation.
+A changed dependency invalidates reuse and requires a new plan; existing plans
+are never rewritten. New out-of-window live candles do not change that fixed
+historical study. Cached reports retain their original evaluation cutoff and
+separately record the current input-verification time. They are not a fresh
+production-strategy validation or a newly untouched holdout.

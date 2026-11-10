@@ -152,11 +152,33 @@ def _stored(store, pair_id, now):
     return sorted(records, key=lambda row: row["timestamp"])
 
 
+def _latest_stored(store,pair_id,now):
+    """Validate all partitions in Arrow; materialize only the latest timestamp."""
+    import pyarrow.compute as pc
+    latest=None
+    for month in store.months(pair_id,DATASET):
+        table=store.read(pair_id,DATASET,month)
+        if not table.num_rows:continue
+        edge=pc.max(table['timestamp']).as_py()
+        if not pc.all(table['is_complete']).as_py() or edge>minute_start(now)-MINUTE:
+            raise CollectionError('stored_candles_unfinished_or_future')
+        latest=max(latest,edge) if latest else edge
+    return latest
+
+
+def _stored_months(store,pair_id,now,months):
+    records=[]
+    for month in sorted(months):records.extend(store.read(pair_id,DATASET,month).to_pylist())
+    if any(not row['is_complete'] or row['timestamp']>minute_start(now)-MINUTE for row in records):
+        raise CollectionError('stored_candles_unfinished_or_future')
+    return sorted(records,key=lambda row:row['timestamp'])
+
+
 def _coverage(data_dir, asset, now):
     records = _stored(MonthlyParquetStore(data_dir), asset["pair_id"], now)
     checkpoint = _checkpoint(data_dir, asset["pair_id"])
     earliest = records[0]["timestamp"] if records else None
-    latest = records[-1]["timestamp"] if records else None
+    latest = records if isinstance(records,datetime) else records[-1]["timestamp"] if records else None
     gaps = []
     for left,right in zip(records,records[1:]):
         missing = int((right["timestamp"]-left["timestamp"])/MINUTE)-1
@@ -228,12 +250,18 @@ class OhlcvCollector:
         if transport is None:
             from .market_data import public_get
             transport = public_get
-        self.request_count += 1
+        from .market_data import PUBLIC_REQUEST_POLICY
+        policy=PUBLIC_REQUEST_POLICY.get();before=getattr(policy,'total_requests',None)
         try:
             body = transport("OHLC", params)
         except Exception as error:
-            self.rate_limited = getattr(error, "code", None) == 429
-            raise CollectionError("rate_limited" if self.rate_limited else "network_request_failed", http_requested=True) from None
+            code=getattr(error,'code',None)
+            requested=getattr(policy,'total_requests',before)>before if before is not None else True
+            self.rate_limited = code in (429,'rate_limited','cycle_deferred_after_throttle')
+            preserved=code if code in ('cycle_request_budget_exhausted','cycle_deferred_after_throttle','request_clock_regressed') else None
+            raise CollectionError(preserved or ("rate_limited" if self.rate_limited else "network_request_failed"), http_requested=requested) from None
+        finally:
+            self.request_count += getattr(policy,'total_requests',before)-before if before is not None else 1
         if isinstance(body, dict) and body.get("error"):
             self.rate_limited = any("rate limit" in str(error).lower() or "throttl" in str(error).lower() for error in body["error"])
             raise CollectionError("rate_limited" if self.rate_limited else "exchange_api_error", http_requested=True)
@@ -241,7 +269,7 @@ class OhlcvCollector:
 
     def _set_checkpoint(self, asset, records):
         saved = _checkpoint(self.data_dir, asset["pair_id"])
-        latest = records[-1]["timestamp"] if records else None
+        latest = records if isinstance(records,datetime) else records[-1]["timestamp"] if records else None
         if saved and saved["latest_observation_at"] and (latest is None or read_time(saved["latest_observation_at"]) > latest):
             raise CollectionError("checkpoint_ahead_of_verified_storage")
         if latest is None:
@@ -265,17 +293,18 @@ class OhlcvCollector:
         records = table_from_records(DATASET, _decode_records(intent["records"])).to_pylist()
         if any(not row["is_complete"] or row["pair_id"] != asset["pair_id"] or row["timestamp"] > minute_start(self.clock())-MINUTE for row in records):
             raise CollectionError("pending_candles_not_finalized")
-        old = _stored(self.store, asset["pair_id"], self.clock())
+        months={row["timestamp"].strftime("%Y-%m") for row in records}
+        old = _stored_months(self.store, asset["pair_id"], self.clock(),months)
         previous = {row["timestamp"]:row for row in old}
         for row in records:
             if row["timestamp"] in previous and previous[row["timestamp"]] != row:
                 raise CollectionError("conflicting_stored_candle", invalid_observations_count=1)
         self.store.write(DATASET, records)
-        actual = _stored(self.store, asset["pair_id"], self.clock())
+        actual = _stored_months(self.store, asset["pair_id"], self.clock(),months)
         by_time = {row["timestamp"]:row for row in actual}
         if any(by_time.get(row["timestamp"]) != row for row in records):
             raise CollectionError("persisted_observation_verification_failed")
-        checkpoint = self._set_checkpoint(asset, actual)
+        checkpoint = self._set_checkpoint(asset, _latest_stored(self.store,asset["pair_id"],self.clock()))
         return checkpoint, len(actual)-len(old), sum(row["timestamp"] in previous for row in records)
 
     def _collect_one(self, asset):
@@ -287,7 +316,7 @@ class OhlcvCollector:
             self._persist_intent(asset, intent)
             pending.unlink()
             recovered = True
-        stored = _stored(self.store, pair, self.clock())
+        stored = _latest_stored(self.store, pair, self.clock())
         checkpoint = self._set_checkpoint(asset, stored)  # Reconcile verified Parquet before resuming.
         params = {"pair":asset["kraken_pair_id"], "interval":1, "assetVersion":1}
         state_file = self.root/"pairs"/(pair+".json")

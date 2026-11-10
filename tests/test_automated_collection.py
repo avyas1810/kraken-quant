@@ -92,7 +92,8 @@ def test_pipeline_order_reuses_existing_collectors(tmp_path,monkeypatch):
             events.append('incremental');return dict(results=[dict(pair_id='BTC-AUD',status='ok')])
     monkeypatch.setattr(m,'OhlcvCollector',Collector)
     def admission(*a,**k):events.append('admission');return dict(markets=[dict(admissible=False)],original_universe={},explicit_proposal={})
-    monkeypatch.setattr(m,'research_audit',admission)
+    from kraken_quant import research_validation
+    monkeypatch.setattr(research_validation,'bounded_validation',admission)
     config=dict(archive=str(archive),archive_sha256='a'*64,start_month='2026-07',end_month='2026-09',validate_research=True,
                 research_start='2026-07-01T00:00:00Z',research_end='2026-10-01T00:00:00Z')
     result=m.run_cycle(tmp_path,config)
@@ -165,3 +166,61 @@ def test_joint_proposal_preserves_original_rejection_and_fixed_dates(tmp_path,mo
     assert report['original_universe']['status']=='INSUFFICIENT_HISTORY'
     assert report['explicit_proposal']['excluded'][0]['pair_id']=='NEW-USD'
     assert [r['admissible'] for r in report['markets']]==[True,False]
+
+def test_wall_clock_resume_expires_even_if_monotonic_is_unchanged(tmp_path):
+    from datetime import timedelta
+    from kraken_quant.data_pipeline import PublicPolicy,PipelineConfig,PipelineFailure
+    now=[datetime(2026,11,1,tzinfo=timezone.utc)]
+    policy=PublicPolicy(tmp_path,PipelineConfig(max_cycle_seconds=60),lambda:now[0],lambda:0,lambda _:None)
+    now[0]+=timedelta(days=1)
+    called=[]
+    with pytest.raises(PipelineFailure,match='cycle_request_budget_exhausted'):
+        policy.request('OHLC',{},lambda:called.append(True))
+    assert not called
+
+
+def test_validation_worker_timeout_is_bounded(tmp_path,monkeypatch):
+    from datetime import timedelta
+    from kraken_quant import research_validation as m
+    (tmp_path/'automated_collection').mkdir()
+    monkeypatch.setattr(m,'cached_result',lambda *a:None)
+    now=[datetime(2026,11,1,tzinfo=timezone.utc)];killed=[]
+    class Process:
+        def poll(self):return None
+        def kill(self):killed.append(True)
+        def wait(self):return 1
+    monkeypatch.setattr(m.subprocess,'Popen',lambda *a,**k:Process())
+    result=m.bounded_validation(tmp_path,[dict(pair_id='BTC-USD')],{'research_validation_seconds':2},
+        clock=lambda:now[0],sleep=lambda _:now.__setitem__(0,now[0]+timedelta(seconds=3)))
+    assert killed and result['validation_pending']
+    assert not result['markets'][0]['admissible']
+
+def test_research_fingerprint_tracks_history_but_not_new_live_rows(tmp_path):
+    import json,hashlib
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from kraken_quant.metadata_store import initialize_metadata
+    from kraken_quant.research_validation import fingerprint
+    initialize_metadata(tmp_path)
+    archive=tmp_path/'Full.zip';archive.write_bytes(b'pinned-source')
+    config=json.loads(Path('examples/automated_collection.json').read_text());config['archive']=str(archive)
+    config['archive_sha256']=hashlib.sha256(archive.read_bytes()).hexdigest()
+    folder=tmp_path/'market_data/BTC-USD/prices_1m';folder.mkdir(parents=True)
+    historical=folder/'2026-07.parquet';historical.write_bytes(b'validated historical bytes')
+    future=folder/'2026-11.parquet';pq.write_table(pa.table({'timestamp':[1]}),future)
+    assets=[dict(pair_id='BTC-USD',kraken_pair_id='XBTUSD',status='online',last_seen='first')]
+    first=fingerprint(tmp_path,assets,config)
+    assets[0]['last_seen']='refreshed'
+    pq.write_table(pa.table({'timestamp':[1,2]}),future)
+    assert fingerprint(tmp_path,assets,config)==first
+    historical.write_bytes(b'changed historical bytes')
+    assert fingerprint(tmp_path,assets,config)!=first
+
+
+def test_corrupted_validation_cache_never_admits(tmp_path):
+    import json
+    from kraken_quant.research_validation import cached_result
+    folder=tmp_path/'automated_collection';(folder/'research_cache').mkdir(parents=True)
+    (folder/'research-cache.json').write_text(json.dumps(dict(cache_id='a'*64)))
+    (folder/'research_cache'/('a'*64+'.json')).write_text('{"markets":[{"admissible":true}]}')
+    assert cached_result(tmp_path,[],{}) is None

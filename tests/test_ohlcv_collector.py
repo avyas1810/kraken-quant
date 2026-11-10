@@ -400,3 +400,22 @@ def test_trade_resume_counts_new_requests_not_cached_pages(data_dir):
     second=fetch_gap(data_dir,'BTC-AUD',**options)
     assert second['status']=='source_window_downloaded'
     assert second['pages']==2 and second['requests']==1 and len(calls)==2
+
+def test_fast_collection_does_not_decode_whole_history(data_dir,monkeypatch):
+    def forbidden(*a,**k):raise AssertionError('incremental collection must not call read_all')
+    monkeypatch.setattr(MonthlyParquetStore,'read_all',forbidden)
+    assert one(collector(data_dir,Public()).collect(pair='BTC-AUD'))['status']=='ok'
+
+
+def test_expired_policy_is_not_reported_as_a_network_request(data_dir):
+    from kraken_quant.data_pipeline import PublicPolicy,PipelineConfig
+    from kraken_quant.market_data import PUBLIC_REQUEST_POLICY
+    clock=Clock();policy=PublicPolicy(data_dir/'policy',PipelineConfig(max_requests_per_cycle=1),clock,clock.monotonic,clock.sleep)
+    policy.request('Assets',{},lambda:{'error':[],'result':{}})
+    token=PUBLIC_REQUEST_POLICY.set(policy)
+    try:
+        client=mod.OhlcvCollector(data_dir,clock=clock)
+        with pytest.raises(mod.CollectionError,match='cycle_request_budget_exhausted') as caught:
+            client._request({'pair':'XBTAUD','interval':1})
+        assert not caught.value.details['http_requested'] and client.request_count==0
+    finally:PUBLIC_REQUEST_POLICY.reset(token)

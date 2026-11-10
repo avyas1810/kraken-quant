@@ -75,17 +75,17 @@ class PublicPolicy:
         self.last=None;self.cooldown_until=0;self.events=[];self.total_requests=0;self.reset()
 
     def reset(self):
-        self.events=[];self.total_requests=0;self.deadline=self.monotonic()+self.config.max_cycle_seconds
+        self.events=[];self.total_requests=0;self.deadline=self.monotonic()+self.config.max_cycle_seconds;self.wall_deadline=self.clock()+timedelta(seconds=self.config.max_cycle_seconds)
 
     def pause(self,seconds):
-        if self.monotonic()+seconds>self.deadline:raise PipelineFailure('cycle_request_budget_exhausted')
+        if self.clock()+timedelta(seconds=seconds)>self.wall_deadline or self.monotonic()+seconds>self.deadline:raise PipelineFailure('cycle_request_budget_exhausted')
         self.sleep(seconds)
 
     def request(self,endpoint,params,fetch):
         if endpoint not in ('OHLC','Depth','AssetPairs','Assets','FeeSchedule','Trades'):raise PipelineFailure('public_endpoint_not_allowed')
         for attempt in range(self.config.request_attempts):
             if self.monotonic()<self.cooldown_until:raise PipelineFailure('cycle_deferred_after_throttle')
-            if self.total_requests>=self.config.max_requests_per_cycle or self.monotonic()>=self.deadline:raise PipelineFailure('cycle_request_budget_exhausted')
+            if self.total_requests>=self.config.max_requests_per_cycle or (self.monotonic()>=self.deadline or self.clock()>=self.wall_deadline):raise PipelineFailure('cycle_request_budget_exhausted')
             limiter=self.root/'last_public_request.json'
             if self.last is None and limiter.exists():
                 prior=json.loads(limiter.read_text())
@@ -122,6 +122,7 @@ class PublicPolicy:
                 event['request_finished_at']=ohlc.sql_time(self.clock())
                 event['response_received_at']=event['request_finished_at'] if received else None
                 self.events.append(event)
+                _atomic_json(self.root/'current-public-requests.json',self.events)
             if event['status']=='rate_limited' and (attempt+1==self.config.request_attempts or wait>self.config.max_backoff_seconds):
                 cooldown=max(wait,self.config.max_backoff_seconds)
                 self.cooldown_until=self.monotonic()+cooldown

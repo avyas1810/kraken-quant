@@ -220,8 +220,13 @@ class PartitionAlgorithm:
                 for month in reader.store.months(asset,dataset):
                     if month>request.cutoff.strftime('%Y-%m'):continue
                     table=reader.store.read(asset,dataset,month)
-                    values=[t for t in table['timestamp'].to_pylist() if t+(timedelta(minutes=1) if dataset=='prices_1m' else timedelta(0))<=request.cutoff]
-                    if values:first=min(first,min(values)) if first else min(values);last=max(last,max(values)) if last else max(values)
+                    import pyarrow.compute as pc
+                    cutoff=request.cutoff-(timedelta(minutes=1) if dataset=='prices_1m' else timedelta(0))
+                    eligible=pc.filter(table['timestamp'],pc.less_equal(table['timestamp'],cutoff))
+                    if len(eligible):
+                        edges=pc.min_max(eligible).as_py()
+                        first=min(first,edges['min']) if first else edges['min']
+                        last=max(last,edges['max']) if last else edges['max']
                 if first is None:raise ResearchDataError('required_dataset_unavailable',pair_id=asset,dataset=dataset)
                 index[(asset,dataset)]=(first,last)
         return index,metadata
