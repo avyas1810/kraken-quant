@@ -188,3 +188,10 @@ HTTP response I/O. Contention consumes the existing UTC/monotonic request budget
 no unbounded wait or separate rate-limit service is introduced. Per-process retry
 and request-count budgets remain intact. Other independently configured client
 namespaces are outside this coordination scope.
+
+Archive completeness verification still streams every original member byte and
+checks full size, SHA-256, ZIP CRC, global timestamp order/range and minute
+alignment. The scan now uses exact integer UTC epoch/month boundaries instead
+of formatting every timestamp across an asset's entire lifetime. It retains the
+identical requested monthly byte slices and source-domain first timestamp. No
+price, quantity, observation time or completeness requirement is changed.

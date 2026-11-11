@@ -5,6 +5,7 @@ evidence must match the entire pinned archive member, including its ZIP CRC.
 REST OHLC responses and sampled books never prove absent candles mean no trades.
 """
 import csv
+from bisect import bisect_right
 import hashlib
 import io
 import json
@@ -16,6 +17,31 @@ from pathlib import Path
 from .cost_storage import digest
 from .historical_population import encoded, sha, dependency, source_records
 from .research_data import instant
+
+
+def _scan_archive_member(handle,source_end,start,end):
+    """Verify every source byte/timestamp, materialize only requested UTC months."""
+    labels=[];edges=[];year,month=start.year,start.month
+    while (year,month)<=(end.year,end.month):
+        labels.append(f'{year:04d}-{month:02d}')
+        edges.append(int(datetime(year,month,1,tzinfo=timezone.utc).timestamp()))
+        if (year,month)==(9999,12):
+            year,month=10000,1;break
+        year,month=(year+1,1) if month==12 else (year,month+1)
+    edges.append(253402300800 if year==10000 else int(datetime(year,month,1,tzinfo=timezone.utc).timestamp()))
+    stop=int(source_end.timestamp());previous=None;first=None;monthly={};size=0;checksum=0;hasher=hashlib.sha256()
+    for line in handle:
+        size+=len(line);checksum=zlib.crc32(line,checksum);hasher.update(line)
+        stamp=int(line.split(b',',1)[0])
+        if not -62135596800<=stamp<=253402300799 or stamp%60 or previous is not None and stamp<=previous or stamp>=stop:
+            raise ValueError('invalid_or_duplicate_archive_source_timestamp')
+        if first is None:first=stamp
+        previous=stamp
+        if edges[0]<=stamp<edges[-1]:
+            label=labels[bisect_right(edges,stamp)-1]
+            monthly.setdefault(label,[]).append(line)
+    if first is None:raise ValueError('empty_archive_completeness_source')
+    return datetime.fromtimestamp(first,timezone.utc),monthly,size,checksum & 0xffffffff,hasher.hexdigest()
 
 
 def _archive_windows(reader, asset, dataset, start, end):
@@ -69,21 +95,10 @@ def _archive_windows(reader, asset, dataset, start, end):
                 raise ValueError('unsafe_archive_completeness_dependency')
             member_key = (doc['archive_sha256'], member, doc['member_sha256'])
             if member_key not in checked_members:
-                info = source.getinfo(member); checksum = 0; size = 0; hasher = hashlib.sha256()
-                previous = None; first = None; monthly = {}
+                info=source.getinfo(member)
                 with extracted.open('rb') as handle:
-                    for line in handle:
-                        size += len(line); checksum = zlib.crc32(line, checksum); hasher.update(line)
-                        stamp = datetime.fromtimestamp(int(line.split(b',',1)[0]), timezone.utc)
-                        if stamp.second or stamp.microsecond or previous is not None and stamp <= previous or stamp >= source_end:
-                            raise ValueError('invalid_or_duplicate_archive_source_timestamp')
-                        if first is None:
-                            first = stamp
-                        previous = stamp
-                        month = stamp.strftime('%Y-%m')
-                        if start.strftime('%Y-%m') <= month <= end.strftime('%Y-%m'):
-                            monthly.setdefault(month, []).append(line)
-                if size != info.file_size or checksum & 0xffffffff != info.CRC or hasher.hexdigest() != doc['member_sha256']:
+                    first,monthly,size,checksum,member_hash=_scan_archive_member(handle,source_end,start,end)
+                if size!=info.file_size or checksum!=info.CRC or member_hash!=doc['member_sha256']:
                     raise ValueError('complete_archive_member_integrity_failed')
                 checked_members[member_key] = first, monthly
             first, monthly = checked_members[member_key]

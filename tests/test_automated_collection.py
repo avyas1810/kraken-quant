@@ -245,3 +245,25 @@ def test_old_source_domain_does_not_expand_query_budget():
         ContinuityRequest(('BTC-USD',),source.domain_start,end)
     with pytest.raises(ValueError,match='ordered_source_domain_required'):
         SourceWindow(start,end,end,'official','a'*64,domain_start=end,domain_end=start)
+
+
+def test_archive_scan_preserves_exact_months_and_full_file_integrity():
+    import io,hashlib,zlib
+    from kraken_quant.continuity_sources import _scan_archive_member
+    times=[datetime(2013,9,1,tzinfo=timezone.utc),datetime(2024,12,31,23,59,tzinfo=timezone.utc),
+        datetime(2025,1,1,tzinfo=timezone.utc),datetime(2026,6,30,23,59,tzinfo=timezone.utc),
+        datetime(2026,7,1,tzinfo=timezone.utc),datetime(2026,8,1,tzinfo=timezone.utc),
+        datetime(2026,9,30,23,59,tzinfo=timezone.utc),datetime(2026,10,1,tzinfo=timezone.utc)]
+    lines=[f'{int(t.timestamp())},1,1,1,1,0,0\n'.encode() for t in times];raw=b''.join(lines)
+    first,monthly,size,crc,checksum=_scan_archive_member(io.BytesIO(raw),datetime(2026,11,1,tzinfo=timezone.utc),datetime(2026,7,15,tzinfo=timezone.utc),datetime(2026,9,1,tzinfo=timezone.utc))
+    assert first==times[0] and size==len(raw) and crc==zlib.crc32(raw)&0xffffffff and checksum==hashlib.sha256(raw).hexdigest()
+    assert monthly=={'2026-07':[lines[4]],'2026-08':[lines[5]],'2026-09':[lines[6]]}
+
+
+@pytest.mark.parametrize('epochs',[[0,0],[60,0],[1],[253402300800],[-62135596860],[]])
+def test_archive_scan_rejects_bad_timestamps_even_outside_requested_months(epochs):
+    import io
+    from kraken_quant.continuity_sources import _scan_archive_member
+    raw=''.join(f'{t},1,1,1,1,0,0\n' for t in epochs).encode()
+    with pytest.raises(ValueError):
+        _scan_archive_member(io.BytesIO(raw),datetime(2026,11,1,tzinfo=timezone.utc),datetime(2026,7,1,tzinfo=timezone.utc),datetime(2026,10,1,tzinfo=timezone.utc))
