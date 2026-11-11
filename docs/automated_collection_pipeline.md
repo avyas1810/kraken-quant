@@ -179,3 +179,12 @@ existing shared calendar cuts, embargo, purge and label horizon. A deficit can
 only reject the entire request; sufficient counts never imply admission. Reports
 retain all assets, exact per-phase counts, unchanged dates and unevaluated quality
 status. Surviving requests still undergo the complete existing M12/source checks.
+
+Routine and maintenance processes sharing the automated-collection directory
+reserve public request start slots through the existing OS advisory ProcessLock
+and last-public-request timestamp. They reread the shared timestamp for every
+request, including cooldown state. The lock covers only reservation/pacing, never
+HTTP response I/O. Contention consumes the existing UTC/monotonic request budget;
+no unbounded wait or separate rate-limit service is introduced. Per-process retry
+and request-count budgets remain intact. Other independently configured client
+namespaces are outside this coordination scope.

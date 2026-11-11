@@ -69,7 +69,7 @@ class PipelineFailure(ValueError):
 
 
 class PublicPolicy:
-    """Shared pacing/retry budget across existing public clients in this process."""
+    """Shared start-slot pacing across processes; per-process bounded retry budgets."""
     def __init__(self,root,config,clock,monotonic,sleep):
         self.root=Path(root);self.config=config;self.clock=clock;self.monotonic=monotonic;self.sleep=sleep
         self.last=None;self.cooldown_until=0;self.events=[];self.total_requests=0;self.reset()
@@ -81,21 +81,35 @@ class PublicPolicy:
         if self.clock()+timedelta(seconds=seconds)>self.wall_deadline or self.monotonic()+seconds>self.deadline:raise PipelineFailure('cycle_request_budget_exhausted')
         self.sleep(seconds)
 
+    def _pacing_lock(self):
+        while True:
+            if self.monotonic()>=self.deadline or self.clock()>=self.wall_deadline:raise PipelineFailure('cycle_request_budget_exhausted')
+            self.root.mkdir(parents=True,exist_ok=True)
+            try:return ProcessLock(self.root/'public-request-pacing')
+            except PermissionError as error:
+                if error.filename is not None:raise PipelineFailure('public_pacing_unavailable') from None
+                self.pause(.05)
+
+    def _reserve_start(self,limiter):
+        lock=self._pacing_lock()
+        try:
+            prior=json.loads(limiter.read_text()) if limiter.exists() else None
+            if prior and prior.get('cooldown_until') and self.clock()<ohlc.read_time(prior['cooldown_until']):raise PipelineFailure('cycle_deferred_after_throttle')
+            elapsed=(self.clock()-ohlc.read_time(prior['started_at'])).total_seconds() if prior else float('inf')
+            if elapsed<0:raise PipelineFailure('request_clock_regressed')
+            self.pause(max(0,self.config.public_interval_seconds-elapsed))
+            started=self.clock();self.last=self.monotonic();self.total_requests+=1
+            _atomic_json(limiter,dict(started_at=ohlc.sql_time(started)))
+            return started
+        finally:lock.close()
+
     def request(self,endpoint,params,fetch):
         if endpoint not in ('OHLC','Depth','AssetPairs','Assets','FeeSchedule','Trades'):raise PipelineFailure('public_endpoint_not_allowed')
         for attempt in range(self.config.request_attempts):
             if self.monotonic()<self.cooldown_until:raise PipelineFailure('cycle_deferred_after_throttle')
             if self.total_requests>=self.config.max_requests_per_cycle or (self.monotonic()>=self.deadline or self.clock()>=self.wall_deadline):raise PipelineFailure('cycle_request_budget_exhausted')
             limiter=self.root/'last_public_request.json'
-            if self.last is None and limiter.exists():
-                prior=json.loads(limiter.read_text())
-                if prior.get('cooldown_until') and self.clock()<ohlc.read_time(prior['cooldown_until']):raise PipelineFailure('cycle_deferred_after_throttle')
-                elapsed=(self.clock()-ohlc.read_time(prior['started_at'])).total_seconds()
-                if elapsed<0:raise PipelineFailure('request_clock_regressed')
-            else:elapsed=float('inf') if self.last is None else self.monotonic()-self.last
-            self.pause(max(0,self.config.public_interval_seconds-elapsed))
-            started=self.clock();self.last=self.monotonic();self.total_requests+=1
-            _atomic_json(limiter,dict(started_at=ohlc.sql_time(started)))
+            started=self._reserve_start(limiter)
             event=dict(endpoint=endpoint,pair=params.get('pair'),attempt=attempt+1,request_started_at=ohlc.sql_time(started),status='interrupted')
             received=False
             retry=False;wait=self.config.backoff_seconds*(2**attempt)
@@ -126,7 +140,13 @@ class PublicPolicy:
             if event['status']=='rate_limited' and (attempt+1==self.config.request_attempts or wait>self.config.max_backoff_seconds):
                 cooldown=max(wait,self.config.max_backoff_seconds)
                 self.cooldown_until=self.monotonic()+cooldown
-                _atomic_json(limiter,dict(started_at=event['request_started_at'],cooldown_until=ohlc.sql_time(self.clock()+timedelta(seconds=cooldown))))
+                lock=self._pacing_lock()
+                try:
+                    prior=json.loads(limiter.read_text())
+                    until=self.clock()+timedelta(seconds=cooldown)
+                    if prior.get('cooldown_until'):until=max(until,ohlc.read_time(prior['cooldown_until']))
+                    _atomic_json(limiter,dict(started_at=prior['started_at'],cooldown_until=ohlc.sql_time(until)))
+                finally:lock.close()
             if not retry or attempt+1==self.config.request_attempts:raise PipelineFailure(event['status'])
             if wait>self.config.max_backoff_seconds:raise PipelineFailure('retry_after_exceeds_bound')
             self.pause(wait)
