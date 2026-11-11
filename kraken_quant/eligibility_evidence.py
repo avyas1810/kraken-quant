@@ -30,10 +30,10 @@ class PointInTimeEvidence:
                 self.errors.append('unreadable_discovery_evidence')
         self.receipts.sort(key=lambda item:(item[0]['observed_at'],item[0]['run_id']))
 
-    def candidates(self):
+    def candidates(self, quote_currencies=("AUD",)):
         # Historical union, including formerly observed/offline pairs. Never select
         # a newly discovered future asset merely because today's SQL contains it.
-        return sorted({r['pair_id'] for receipt,_ in self.receipts for r in receipt['records'] if r.get('quote_asset')=='AUD'})
+        return sorted({r['pair_id'] for receipt,_ in self.receipts for r in receipt['records'] if r.get('quote_asset') in quote_currencies})
 
     def metadata(self,pair):
         if self.errors:return None,'discovery_provenance_unreadable'

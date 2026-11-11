@@ -114,7 +114,9 @@ class SourceWindow:
         if (self.domain_start is None) != (self.domain_end is None):
             raise ValueError('both_source_domain_bounds_required')
         if self.domain_start is not None:
-            a, b = bounds(self.domain_start, self.domain_end)
+            a, b = instant(self.domain_start), instant(self.domain_end)
+            if a >= b:
+                raise ValueError('ordered_source_domain_required')
             object.__setattr__(self, 'domain_start', a)
             object.__setattr__(self, 'domain_end', b)
 

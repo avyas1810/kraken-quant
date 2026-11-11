@@ -61,7 +61,7 @@ def source_records(root,doc,checked=None):
  rows=parse_csv(raw,doc['pair_id'],rejects=[])
  if len(rows)+doc.get('invalid_rows',0)!=doc['source_rows']:raise ValueError('historical_source_count_mismatch')
  return rows
-def import_csv(data_dir,pair,path,*,source_url,archive_sha256,coverage_end,received_at=None, source_kind='kraken_official_ohlcvt', dependencies=()):
+def import_csv(data_dir,pair,path,*,source_url,archive_sha256,coverage_end,received_at=None, source_kind='kraken_official_ohlcvt', dependencies=(), start_month=None, end_month=None):
  """Commit one month at a time; existing validated rows win, conflicts retained.
 
  Receipts follow verified Parquet persistence. A restart reconciles the checkpoint.
@@ -77,8 +77,8 @@ def import_csv(data_dir,pair,path,*,source_url,archive_sha256,coverage_end,recei
  with connect_metadata(root,readonly=True) as db:
   db.row_factory=__import__('sqlite3').Row
   asset=db.execute('SELECT * FROM assets WHERE pair_id=?',(pair,)).fetchone()
-  if asset is None or asset['quote_asset']!='AUD':raise ValueError('unknown_aud_market')
- if path.name!=ALIASES.get(asset['base_asset'],asset['base_asset'])+'AUD_1.csv':raise ValueError('archive_member_identity_mismatch')
+  if asset is None or asset['quote_asset'] not in ('AUD','USD','USDT','USDC','EUR'):raise ValueError('unknown_aud_market')
+ if path.name!=ALIASES.get(asset['base_asset'],asset['base_asset'])+asset['quote_asset']+'_1.csv':raise ValueError('archive_member_identity_mismatch')
  store=MonthlyParquetStore(root);area=root/'historical_imports';area.mkdir(exist_ok=True);lock=ProcessLock(area/('import-'+pair));results=[]
  with path.open('rb') as handle:member_sha=hashlib.file_digest(handle,'sha256').hexdigest()
  def commit(month,lines):
@@ -121,11 +121,20 @@ def import_csv(data_dir,pair,path,*,source_url,archive_sha256,coverage_end,recei
   with connect_metadata(root) as db:
    if newest:db.execute("INSERT INTO ingestion_state VALUES (?,?,?,?) ON CONFLICT(pair_id,dataset) DO UPDATE SET latest_observation_at=excluded.latest_observation_at,updated_at=excluded.updated_at WHERE excluded.latest_observation_at>ingestion_state.latest_observation_at",(pair,'prices_1m',newest,updated))
   results.append(json.loads(receipt.read_text()));print(pair,month,'source',len(rows),'new',len(incoming),'conflicts',len(conflicts),flush=True)
+ lower=int(datetime.fromisoformat(start_month+'-01T00:00:00+00:00').timestamp()) if start_month else None
+ upper=None
+ if end_month:
+  last=datetime.fromisoformat(end_month+'-01T00:00:00+00:00')
+  upper=int((datetime(last.year+1,1,1,tzinfo=UTC) if last.month==12 else datetime(last.year,last.month+1,1,tzinfo=UTC)).timestamp())
+ if lower is not None and upper is not None and lower>=upper:
+  lock.close();raise ValueError('ordered_archive_month_range_required')
  try:
   lines=[];month=None
   with path.open('rb') as handle:
    for line in handle:
-    value=datetime.fromtimestamp(int(line.split(b',',1)[0]),UTC).strftime('%Y-%m')
+    stamp=int(line.split(b',',1)[0])
+    if lower is not None and stamp<lower or upper is not None and stamp>=upper:continue
+    value=datetime.fromtimestamp(stamp,UTC).strftime('%Y-%m')
     if month is not None and value!=month:commit(month,lines);lines=[]
     month=value;lines.append(line)
   if lines:commit(month,lines)
@@ -163,7 +172,7 @@ def import_archive(data_dir,archive,*,expected_sha256,coverage_end):
   if coverage_end!=source_end:raise ValueError('archive_coverage_mismatch')
   folder=Path(data_dir)/'historical_archives/extracted'/actual;folder.mkdir(parents=True,exist_ok=True)
   for asset in collection_universe(data_dir)[0]:
-   name=ALIASES.get(asset['base_asset'],asset['base_asset'])+'AUD_1.csv'
+   name=ALIASES.get(asset['base_asset'],asset['base_asset'])+asset['quote_asset']+'_1.csv'
    if name not in source.namelist():raise ValueError('verified_aud_archive_member_missing:'+asset['pair_id'])
    target=folder/name
    # Reading to EOF verifies the ZIP member CRC; no untrusted paths are extracted.

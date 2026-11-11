@@ -117,10 +117,11 @@ def _load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0
     pin=artifacts['inputs']
     metadata=doc['metadata_sources'][asset]
     verify_source(reader.data_dir,metadata['source_id'],metadata['source_sha256'])
-    for name,expected in pin['sources'].items():verify_source(reader.data_dir,name,expected)
+    coverage_sources=artifacts.get('coverage_sources',{})
+    for name,expected in {**pin['sources'],**coverage_sources}.items():verify_source(reader.data_dir,name,expected)
     pinned=ResearchData(reader.data_dir,as_of=cutoff,clock=reader.clock)
     pinned.evidence.receipts=[(r,p) for r,p in pinned.evidence.receipts if p.relative_to(reader.data_dir).as_posix()==metadata['source_id']]
-    pinned.source_selection=set(pin['sources'])
+    pinned.source_selection=set(pin['sources']) | set(coverage_sources)
     pinned.record_selection={(dataset,asset):unpack_keys(pin,config['maximum_records'])}
     a,b=instant(part['start']),instant(part['end_exclusive'])
     if b-a<duration(config['minimum_durations'][('training','validation','test').index(phase)]):

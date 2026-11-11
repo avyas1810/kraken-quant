@@ -331,3 +331,31 @@ def test_validate_rejects_incomplete_stored_candles(data_dir):
     result=mod.validate(data_dir,config(),clock())
     assert result['status']=='error' and any(e['pair_id']=='BTC-AUD' for e in result['errors'])
     assert before==files(data_dir)
+
+
+def test_independent_public_policies_reserve_fresh_shared_start_slots(tmp_path):
+    first,c=policy(tmp_path)
+    second=mod.PublicPolicy(tmp_path,first.config,c,c.monotonic,c.sleep)
+    calls=[]
+    def fetch():calls.append(c.monotonic());return {'error':[]}
+    first.request('Trades',{'pair':'XBTUSD'},fetch)
+    second.request('OHLC',{'pair':'XBTUSD'},fetch)
+    first.request('Trades',{'pair':'XBTUSD'},fetch)
+    assert calls==[0,1.1,2.2]
+
+
+def test_public_pacing_lock_is_released_before_network_io(tmp_path):
+    first,c=policy(tmp_path)
+    second=mod.PublicPolicy(tmp_path,first.config,c,c.monotonic,c.sleep)
+    first.request('Trades',{},lambda:second.request('OHLC',{},lambda:{'error':[]}))
+    assert first.total_requests==second.total_requests==1 and c.monotonic()==1.1
+
+
+def test_contended_public_pacing_wait_obeys_existing_wall_budget(tmp_path):
+    first,c=policy(tmp_path,max_cycle_seconds=1)
+    lock=mod.ProcessLock(tmp_path/'public-request-pacing');calls=[]
+    try:
+        with pytest.raises(mod.PipelineFailure,match='cycle_request_budget_exhausted'):
+            first.request('OHLC',{},lambda:calls.append(True))
+    finally:lock.close()
+    assert not calls and first.total_requests==0

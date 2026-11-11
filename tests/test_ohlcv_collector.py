@@ -367,3 +367,55 @@ def test_unresolved_record_count_is_preserved_without_reclassification(data_dir)
     path.write_text(json.dumps(receipt))
     assets,audit_id,count=mod.collection_universe(data_dir)
     assert count==2 and {a["pair_id"] for a in assets}=={"BTC-AUD","ETH-AUD"}
+
+def test_explicit_quote_scope_preserves_aud_default(data_dir):
+    assert {a['pair_id'] for a in mod.collection_universe(data_dir)[0]}=={'BTC-AUD','ETH-AUD'}
+    expanded=mod.collection_universe(data_dir,('AUD','USD'))[0]
+    assert {a['pair_id'] for a in expanded}=={'BTC-AUD','ETH-AUD','ADA-USD'}
+    assert next(a for a in expanded if a['pair_id']=='ADA-USD')['kraken_pair_id']=='ADAUSD'
+
+
+def test_explicit_selected_pairs_fail_closed(data_dir):
+    with pytest.raises(mod.CollectionError,match='unverified_requested_market'):
+        mod.OhlcvCollector(data_dir).collect(all_aud=True,pair_ids=('UNKNOWN-USD',),quote_currencies=('AUD','USD'))
+
+
+def test_trade_resume_counts_new_requests_not_cached_pages(data_dir):
+    from kraken_quant.historical_trades import fetch_gap
+    start=NOW.replace(second=0,microsecond=0)-timedelta(minutes=5)
+    end=start+timedelta(minutes=3)
+    calls=[]
+    def transport(endpoint,params):
+        calls.append(params['since'])
+        if len(calls)==1:
+            rows=[['100','1',str(int(start.timestamp())+i/10),'b','m','',i] for i in range(1000)]
+            last=str(int(start.timestamp()*1000000000)+100000000000)
+        else:
+            rows=[['100','1',str(int(end.timestamp())),'b','m','',1001]]
+            last=str(int(end.timestamp()*1000000000))
+        return {'error':[],'result':{'BTC/AUD':rows,'last':last}}
+    options=dict(start=start,end=end,max_requests=1,transport=transport,sleeper=lambda _:None,prepare_only=True)
+    first=fetch_gap(data_dir,'BTC-AUD',**options)
+    assert first['status']=='incomplete_request_budget_or_source_exhausted'
+    second=fetch_gap(data_dir,'BTC-AUD',**options)
+    assert second['status']=='source_window_downloaded'
+    assert second['pages']==2 and second['requests']==1 and len(calls)==2
+
+def test_fast_collection_does_not_decode_whole_history(data_dir,monkeypatch):
+    def forbidden(*a,**k):raise AssertionError('incremental collection must not call read_all')
+    monkeypatch.setattr(MonthlyParquetStore,'read_all',forbidden)
+    assert one(collector(data_dir,Public()).collect(pair='BTC-AUD'))['status']=='ok'
+
+
+def test_expired_policy_is_not_reported_as_a_network_request(data_dir):
+    from kraken_quant.data_pipeline import PublicPolicy,PipelineConfig
+    from kraken_quant.market_data import PUBLIC_REQUEST_POLICY
+    clock=Clock();policy=PublicPolicy(data_dir/'policy',PipelineConfig(max_requests_per_cycle=1),clock,clock.monotonic,clock.sleep)
+    policy.request('Assets',{},lambda:{'error':[],'result':{}})
+    token=PUBLIC_REQUEST_POLICY.set(policy)
+    try:
+        client=mod.OhlcvCollector(data_dir,clock=clock)
+        with pytest.raises(mod.CollectionError,match='cycle_request_budget_exhausted') as caught:
+            client._request({'pair':'XBTAUD','interval':1})
+        assert not caught.value.details['http_requested'] and client.request_count==0
+    finally:PUBLIC_REQUEST_POLICY.reset(token)

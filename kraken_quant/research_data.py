@@ -86,12 +86,12 @@ class ResearchData:
         self._parsed_pair=None;self._parsed_sources=OrderedDict();self._historical_sources=OrderedDict()
         self._metadata_hashes={str(path):hashlib.sha256(path.read_bytes()).hexdigest() for _,path in self.evidence.receipts}
 
-    def pairs(self):
+    def pairs(self, quote_currencies=("AUD",)):
         pairs=[];unresolved=[]
-        for pair in self.evidence.candidates():
+        for pair in self.evidence.candidates(quote_currencies):
             meta,error=self.evidence.metadata(pair)
             if error:unresolved.append(dict(pair_id=pair,reason=error))
-            elif meta['market_type']=='spot' and meta['quote_asset']=='AUD':pairs.append(pair)
+            elif meta['market_type']=='spot' and meta['quote_asset'] in quote_currencies:pairs.append(pair)
         if unresolved:raise ResearchDataError('unresolved_market_identity',records=unresolved)
         return pairs
 

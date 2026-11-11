@@ -22,6 +22,15 @@ def align(value, frequency, up=False):
     return EPOCH+(steps+int(up and bool(remainder)))*frequency
 
 
+def phase_cuts(request,left,right):
+    """Shared M13 calendar cuts; availability prechecks never allocate their own dates."""
+    if request.rolling:
+        return [left,left+request.rolling.durations[0],left+sum(request.rolling.durations[:2],timedelta(0)),right]
+    cells=(right-left)//request.frequency
+    n=int(Decimal(cells)*request.proportions[0]);m=int(Decimal(cells)*request.proportions[1])
+    return [left,left+n*request.frequency,left+(n+m)*request.frequency,right]
+
+
 def canonical(value):
     if not isinstance(value,str):
         raise ValueError('asset_identifiers_must_be_strings')
@@ -211,8 +220,13 @@ class PartitionAlgorithm:
                 for month in reader.store.months(asset,dataset):
                     if month>request.cutoff.strftime('%Y-%m'):continue
                     table=reader.store.read(asset,dataset,month)
-                    values=[t for t in table['timestamp'].to_pylist() if t+(timedelta(minutes=1) if dataset=='prices_1m' else timedelta(0))<=request.cutoff]
-                    if values:first=min(first,min(values)) if first else min(values);last=max(last,max(values)) if last else max(values)
+                    import pyarrow.compute as pc
+                    cutoff=request.cutoff-(timedelta(minutes=1) if dataset=='prices_1m' else timedelta(0))
+                    eligible=pc.filter(table['timestamp'],pc.less_equal(table['timestamp'],cutoff))
+                    if len(eligible):
+                        edges=pc.min_max(eligible).as_py()
+                        first=min(first,edges['min']) if first else edges['min']
+                        last=max(last,edges['max']) if last else edges['max']
                 if first is None:raise ResearchDataError('required_dataset_unavailable',pair_id=asset,dataset=dataset)
                 index[(asset,dataset)]=(first,last)
         return index,metadata
@@ -239,6 +253,16 @@ class PartitionAlgorithm:
             else:
                 left=align(max(first,request.start) if request.start else first,request.frequency,True)+request.feature_lookback+request.reference_lookback
                 right=align(min(request.end,last),request.frequency)
+            if fixed and bounds_failures:
+                # A failed mandatory envelope cannot be repaired by phase scans.
+                # Reject before materializing immutable source history; no dates
+                # or requirements change and no untested phase is called ready.
+                attempt=dict(start=left,end_exclusive=right,passed=False,reasons=bounds_failures,stage='envelope_precheck')
+                audit=selection_audit(request,assets,index,available,None,[attempt],[],bounds_failures)
+                audit['per_asset_sufficiency']=[dict(asset=a,dataset=d,passed=False,observation_count=None,
+                    reason='Phase admission not performed: fixed envelope is unavailable.',
+                    available_start=index[(a,d)][0],available_end=index[(a,d)][1]) for a in assets for d in request.datasets]
+                return self._reject('INSUFFICIENT_HISTORY',bounds_failures,audits+[audit])
             if left>=right:
                 reasons=[dict(assets=assets,start=left,end=right,reason='Selected assets/data types have no common calendar interval after context requirements.')]
                 return self._reject('NO_COMMON_WINDOW',reasons,audits+[selection_audit(request,assets,index,available,None,[],[],reasons)])
@@ -247,6 +271,14 @@ class PartitionAlgorithm:
             budget+=cells*len(assets)*len(request.datasets)
             if budget>request.maximum_grid_cells:
                 return self._reject('INVALID_CONFIGURATION',[dict(reason='Grid work budget exceeded; narrow start/cutoff or explicitly raise maximum_grid_cells.',required_cells=budget)])
+            if fixed and request.rolling is None:
+                checks,necessary_failures=self._necessary_counts(reader,request,assets,left,right)
+                if necessary_failures:
+                    status='INSUFFICIENT_HISTORY' if any(f['status']=='INSUFFICIENT_HISTORY' for f in necessary_failures) else 'INSUFFICIENT_OBSERVATIONS'
+                    attempt=dict(start=left,end_exclusive=right,passed=False,reasons=necessary_failures,stage='necessary_count_precheck')
+                    audit=selection_audit(request,assets,index,available,None,[attempt],[],necessary_failures)
+                    audit['per_asset_sufficiency']=checks
+                    return self._reject(status,necessary_failures,audits+[audit])
             frames={};sources={};mask=[True]*cells;activity_gaps=[]
             load_start=left-request.feature_lookback-request.reference_lookback
             count=0
@@ -337,6 +369,36 @@ class PartitionAlgorithm:
         return PartitionPlan('READY',ident,raw)
 
     @staticmethod
+    def _necessary_counts(reader,request,assets,left,right):
+        """Physical counts only reject; source/M12 admission is still mandatory."""
+        import pyarrow.compute as pc
+        cuts=phase_cuts(request,left,right);checks=[];failures=[]
+        for asset in assets:
+            for dataset in request.datasets:
+                counts=[0,0,0]
+                for month in reader.store.months(asset,dataset):
+                    if not left.strftime('%Y-%m')<=month<=right.strftime('%Y-%m'):continue
+                    times=reader.store.read(asset,dataset,month)['timestamp']
+                    for i in range(3):
+                        a=cuts[i]+(request.embargo if i else timedelta(0))
+                        b=cuts[i+1]-request.label_horizon-(request.purge if i<2 else timedelta(0))
+                        if a<b:counts[i]+=pc.count_distinct(pc.filter(times,pc.and_(pc.greater_equal(times,a),pc.less(times,b)))).as_py()
+                for i,phase in enumerate(PHASES):
+                    a=cuts[i]+(request.embargo if i else timedelta(0));b=cuts[i+1]-request.label_horizon-(request.purge if i<2 else timedelta(0))
+                    required=max(request.minimum_observations[i],request.continuity.minimum_observations)
+                    duration=max(b-a,timedelta(0));short=duration<request.minimum_durations[i] or a>=b
+                    checks.append(dict(asset=asset,dataset=dataset,phase=phase,fold=0,passed=False,
+                        observation_count=counts[i],required_observations=required,count_sufficient=counts[i]>=required,
+                        available_seconds=duration.total_seconds(),required_seconds=request.minimum_durations[i].total_seconds(),
+                        reason='Necessary physical count only; quality/admission not evaluated.'))
+                    if short or counts[i]<required:
+                        failures.append(dict(status='INSUFFICIENT_HISTORY' if short else 'INSUFFICIENT_OBSERVATIONS',asset=asset,dataset=dataset,phase=phase,fold=0,
+                            required_observations=required,available_observations=counts[i],available_start=a,available_end_exclusive=b,
+                            required_seconds=request.minimum_durations[i].total_seconds(),available_seconds=duration.total_seconds(),
+                            reason='Necessary phase duration/physical observation minimum fails; dates and requirements unchanged.'))
+        return checks,failures
+
+    @staticmethod
     def _slice(frame,start,end):
         return frame.loc[(frame['timestamp']>=start)&(frame['timestamp']<end)].copy()
 
@@ -350,11 +412,7 @@ class PartitionAlgorithm:
         folds=[];failures=[]
         for fold,(left,right) in enumerate(windows):
             cells=(right-left)//request.frequency
-            if request.rolling:
-                cuts=[left,left+request.rolling.durations[0],left+sum(request.rolling.durations[:2],timedelta(0)),right]
-            else:
-                n=int(Decimal(cells)*request.proportions[0]);m=int(Decimal(cells)*request.proportions[1])
-                cuts=[left,left+n*request.frequency,left+(n+m)*request.frequency,right]
+            cuts=phase_cuts(request,left,right)
             phases={}
             for i,phase in enumerate(PHASES):
                 a=cuts[i]+(request.embargo if i else timedelta(0))
@@ -394,7 +452,8 @@ class PartitionAlgorithm:
                             _,context_report=analyze(self._slice(frames[key],context_req.start-request.reference_lookback,a),context_req,asset,dataset,request.cutoff,sources[key])
                             if not context_report['passed']:failures.append(dict(status='INSUFFICIENT_DATA_QUALITY',asset=asset,dataset=dataset,phase=phase,fold=fold,reason='Feature lookback context fails admission.',details=context_report['failure_reasons']))
                         inputs=self._slice(frames[key],a-request.feature_lookback-request.reference_lookback,b)
-                        datasets[dataset]=dict(samples=pin_frame(selected,dataset),context=pin_frame(context,dataset),inputs=pin_frame(inputs,dataset),quality=report)
+                        datasets[dataset]=dict(samples=pin_frame(selected,dataset),context=pin_frame(context,dataset),inputs=pin_frame(inputs,dataset),quality=report,
+                            coverage_sources={w.source_id:w.source_hash for w in sources[key]})
                     phase_assets[asset]=datasets
                 phases[phase]=dict(start=a,end_exclusive=b,context_start=a-request.feature_lookback,
                     label_support_end=b+request.label_horizon,assets=phase_assets)

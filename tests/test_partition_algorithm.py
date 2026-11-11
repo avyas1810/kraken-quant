@@ -425,3 +425,31 @@ def test_pre_governance_m13_manifest_still_reads_without_false_holdout_claim(mak
     frame=reader.load_partition_phase(ident,'test','BTC-AUD')
     assert len(frame)>0 and frame.attrs['holdout_status']=='LEGACY_USE_HISTORY_UNKNOWN'
     assert not frame.attrs['untouched_out_of_sample']
+
+
+def test_impossible_fixed_envelope_rejects_before_source_materialization(make,monkeypatch):
+    import kraken_quant.partition_algorithm as module
+    reader=make(offsets={'BTC-AUD':0,'ETH-AUD':100})
+    def forbidden(*args,**kwargs):
+        raise AssertionError('No phase/source materialization for unavailable fixed envelope')
+    monkeypatch.setattr(module,'archive_windows',forbidden)
+    plan=generate(reader,window_mode='FIXED_WINDOW',start=START,end=START+240*HOUR)
+    assert plan.status=='INSUFFICIENT_HISTORY' and plan.manifest_id is None
+    audit=plan.report['window_selection'][0]
+    assert audit['selected_window'] is None
+    assert audit['selection_attempts'][0]['stage']=='envelope_precheck'
+    assert len(audit['per_asset_sufficiency'])==2
+    assert all(r['observation_count'] is None and not r['passed'] for r in audit['per_asset_sufficiency'])
+
+
+def test_fixed_count_deficit_rejects_before_source_materialization(make,monkeypatch):
+    import kraken_quant.partition_algorithm as module
+    reader=make(offsets={'BTC-AUD':0,'ETH-AUD':0},missing=tuple(range(1,239)))
+    def forbidden(*args,**kwargs):raise AssertionError('Cannot admit a physically insufficient fixed request')
+    monkeypatch.setattr(module,'archive_windows',forbidden)
+    plan=generate(reader,window_mode='FIXED_WINDOW',start=START,end=START+240*HOUR,minimum_observations=(100,50,50))
+    assert plan.status=='INSUFFICIENT_OBSERVATIONS' and not plan.ready
+    assert any(f['asset']=='ETH-AUD' and f['available_observations']<f['required_observations'] for f in plan.report['failures'])
+    audit=plan.report['window_selection'][0]
+    assert audit['selection_attempts'][0]['stage']=='necessary_count_precheck'
+    assert audit['selected_window'] is None and all(not r['passed'] for r in audit['per_asset_sufficiency'])
