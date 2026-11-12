@@ -94,6 +94,18 @@ def test_os_memory_is_measured():
     assert 0 < current <= peak
 
 
+@pytest.mark.skipif(__import__('os').name!='nt',reason='Windows native counter binding')
+def test_windows_memory_samples_do_not_accumulate_pointer_types():
+    import ctypes
+    from kraken_quant.research_stream import _windows_memory_api
+    resident_bytes();binding=_windows_memory_api();before=len(ctypes._pointer_type_cache)
+    for _ in range(50):
+        resident_bytes()
+        assert _windows_memory_api() is binding
+    assert len(ctypes._pointer_type_cache)==before
+    assert _windows_memory_api.cache_info().currsize==1
+
+
 def test_independent_assessment_is_read_only_not_authorization(make):
     from kraken_quant.partition_algorithm import PartitionAlgorithm
     r=make()

@@ -6,6 +6,7 @@ frames for the asset universe. No spill files, cache or data copies are written.
 """
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
+from functools import lru_cache
 import ctypes
 import gc
 import heapq
@@ -20,22 +21,30 @@ from .research_data import bounds, ResearchDataError
 from .storage_schema import dataset_schema, validate_pair_id, LOGICAL_KEYS
 
 
+@lru_cache(maxsize=1)
+def _windows_memory_api():
+    # ctypes caches pointer types strongly. Defining this structure per sample
+    # would otherwise accumulate a new cached type for every budget check.
+    from ctypes import wintypes
+    class Counters(ctypes.Structure):
+        _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [
+            (name, ctypes.c_size_t) for name in ('PeakWorkingSetSize', 'WorkingSetSize',
+            'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
+            'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    api = ctypes.WinDLL('psapi', use_last_error=True).GetProcessMemoryInfo
+    api.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+    return Counters, kernel.GetCurrentProcess, api
+
+
 def resident_bytes():
     """Actual resident working set and OS peak, not Python allocation counts."""
     import os
     if os.name == 'nt':
-        from ctypes import wintypes
-        class Counters(ctypes.Structure):
-            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD)] + [
-                (name, ctypes.c_size_t) for name in ('PeakWorkingSetSize', 'WorkingSetSize',
-                'QuotaPeakPagedPoolUsage', 'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage',
-                'QuotaNonPagedPoolUsage', 'PagefileUsage', 'PeakPagefileUsage')]
+        Counters, current_process, api = _windows_memory_api()
         counters = Counters(); counters.cb = ctypes.sizeof(counters)
-        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-        kernel.GetCurrentProcess.restype = wintypes.HANDLE
-        api = ctypes.WinDLL('psapi', use_last_error=True).GetProcessMemoryInfo
-        api.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
-        if not api(kernel.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+        if not api(current_process(), ctypes.byref(counters), counters.cb):
             raise OSError('working_set_measurement_failed')
         return counters.WorkingSetSize, counters.PeakWorkingSetSize
     values = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
