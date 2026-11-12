@@ -187,7 +187,7 @@ class ResearchData:
         self._cache_key=key;self._cache=(index,warnings)
         return self._cache
 
-    def _load(self,dataset,pair,start,end):
+    def _load(self,dataset,pair,start,end,*,archive_first=False):
         start,end=bounds(start,end)
         if end>self.as_of:raise ValueError('query_end_exceeds_knowledge_time')
         meta,error=self._metadata(pair)
@@ -197,7 +197,12 @@ class ResearchData:
         try:
             for month in self.store.months(pair,dataset):
                 if month<start.strftime('%Y-%m') or month>end.strftime('%Y-%m'):continue
+                if datetime.fromisoformat(month+'-01').replace(tzinfo=timezone.utc)>=end:continue
                 table=self.store.read(pair,dataset,month);partitions.append(month)
+                import pyarrow.compute as pc
+                original_rows=table.num_rows
+                table=table.filter(pc.and_(pc.greater_equal(table['timestamp'],start),pc.less(table['timestamp'],end)))
+                outside+=original_rows-table.num_rows
                 for row in table.to_pylist():
                     if start<=row['timestamp']<end and (self.record_selection is None or key_text(dataset,row) in self.record_selection.get((dataset,pair),set())):rows.append(row)
                     else:outside+=1
@@ -210,7 +215,7 @@ class ResearchData:
         issues=self.quality_issues(pair,start,end,dataset);refs={};warnings=[]
         issue_ids_json=json.dumps([i['issue_id'] for i in issues],separators=(',',':'))
         if rows:
-            try:index,warnings=self._index(pair,dataset,start,end,meta)
+            try:index,warnings=(None,[]) if archive_first else self._index(pair,dataset,start,end,meta)
             except ResearchDataError as error:
                 if error.code!='source_binding_missing':raise
                 index,warnings={},[]
@@ -231,7 +236,13 @@ class ResearchData:
                     for original,reference in archive.get(stamp,()):
                         if (len(group)==1 and group[0]==original if isinstance(original,dict) else ordered(dataset,group)==ordered(dataset,original)):
                             match=(None,None,reference);break
-                if match is None:match=index.get(digest(ordered(dataset,group)))
+                if match is None:
+                    if index is None:
+                        try:index,warnings=self._index(pair,dataset,start,end,meta)
+                        except ResearchDataError as error:
+                            if error.code!='source_binding_missing':raise
+                            index,warnings={},[]
+                    match=index.get(digest(ordered(dataset,group)))
                 if match is None:raise ResearchDataError('missing_or_inconsistent_provenance',pair_id=pair,dataset=dataset,timestamp=candles.sql_time(stamp))
                 ref=match[2];refs[ref['source_id']]=ref
                 for row in group:row.update(ref,query_quality_issue_ids=issue_ids_json)
@@ -285,6 +296,20 @@ class ResearchData:
     def record_partition_feedback(self,manifest_id,reason):
         from .partition_governance import record_use
         return record_use(self,manifest_id,feedback=reason)
+
+    def load_market_data(self,pairs,start,end,**options):
+        """Bounded Arrow batches; raw access does not authorize a strategy run.
+
+        Use continuity()/load_for_research() or an immutable partition plan for
+        study admission. Batch order is globally chronological, ties by pair.
+        """
+        from .research_stream import MarketDataStream
+        return MarketDataStream(self,pairs,start,end,**options)
+
+    def stream_partition_phase(self,manifest_id,phase,**options):
+        """Chronological bounded replay using existing guarded M13 admission."""
+        from .research_stream import partition_stream
+        return partition_stream(self,manifest_id,phase,**options)
 
     def load_prices(self,pair,start,end)->pd.DataFrame:return self._load('prices_1m',pair,start,end)
     def load_quotes(self,pair,start,end)->pd.DataFrame:return self._load('quotes_1m',pair,start,end)

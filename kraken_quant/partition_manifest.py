@@ -127,7 +127,7 @@ def _load_plan_phase(reader,manifest_id,phase,asset,*,dataset='prices_1m',fold=0
     if b-a<duration(config['minimum_durations'][('training','validation','test').index(phase)]):
         raise ValueError('partition_phase_duration_insufficient')
     reference=duration(config['reference_lookback']);lookback=duration(config['feature_lookback'])
-    inputs=pinned._load(dataset,asset,a-reference-lookback,b)
+    inputs=pinned._load(dataset,asset,a-reference-lookback,b,archive_first=True)
     if len(inputs)!=pin['rows'] or row_hash(inputs[dataset_schema(dataset).names].to_dict('records'))!=pin['sha256']:
         raise ValueError('partition_records_changed_or_missing')
     # Reuse the same M12 admission logic on pinned inputs, not a stored PASS flag.
