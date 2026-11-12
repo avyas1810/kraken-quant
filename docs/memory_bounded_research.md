@@ -58,6 +58,8 @@ preflights allow 8192 bytes per physical monthly source row and 16384 bytes per
 pinned phase input row. Native working set is checked between bounded units and
 batches. Windows uses `GetProcessMemoryInfo`; Linux uses `/proc/self/status`.
 These are resident/OS high-water measurements, not Python allocation estimates.
+The Windows native binding is cached once, so sampling itself cannot accumulate
+new ctypes pointer types. Repeated sampling is covered by a regression test.
 
 Budget failures raise a clear `MemoryError`; they never relax research criteria
 or drop assets. This is a cooperative process guard, not an OS reservation
@@ -93,6 +95,7 @@ strategy-performance evaluation or holdout access.
 `events()` exposes a completed candle no earlier than opening plus one minute,
 while preserving the original timestamp. Its timing is explicitly retrospective
 source-event time, not proof that an imported archive was received live.
+Use `available_at` to advance a replay clock, not the candle opening timestamp.
 Receipt-aware plans must use the existing M12 decision-time release API; this
 event adapter rejects that mode. Candle replay requires a minute-aligned end.
 Unadmitted data inspection requires explicit `events(allow_unadmitted=True)`;
@@ -232,9 +235,14 @@ The machine suspended overnight during several concurrent validation runs. Affec
 
 | Workload | Rows | Native peak RSS (MiB) | Elapsed seconds | CPU seconds |
 |---|---:|---:|---:|---:|
-| day | 590 | 276.90 | 4.922 | suspension-affected run; see CPU audit |
+| day-final | 590 | 295.35 | 6.015 | 6.062 |
 | quarter | 38996 | 306.32 | 28.219 | suspension-affected run; see CPU audit |
 | ten-final | 481276 | 411.96 | 1359.703 | 770.281 |
+| all | 4631664 | 679.04 | 5005.781 | 4711.656 |
+| all-repeat | 4631664 | 661.68 | 5053.515 | 4757.734 |
+| partition | 2270535 | 777.69 | 6964.797 | 6510.906 |
+
+Both all-64 runs returned 4,631,664 rows, with identical per-pair counts and SHA-256 `428404b779ebc0343c3a5b8c7c0f028b871a236531fc266fe254457c138753ac` despite 10,000 versus 4096 row batches. Every selected asset returned observations. The complete hash includes exact decimal values and original UTC timestamps in chronological pair order.
 
 ### Storage categories and remaining limitations
 
@@ -248,4 +256,12 @@ The machine suspended overnight during several concurrent validation runs. Affec
 
 Existing archives, extracted members, exports, partial exports, notebooks and viewer files were retained. No new persistent market-data copy or package environment is required. Test fixtures and the temporary profiler are separate from canonical data and are cleaned after verification; small aggregate audit reports remain. Research APIs do not start or stop scheduled collection. Only the previously configured scheduler may independently append new genuine recent candles.
 
-All 64 assets are intended to be technically queryable and replayable; that does not make all 64 admitted for this fixed study. The five explicit count failures remain rejected, the nine independent passes need appropriate immutable registration before a strategy study, and combining them with the approved 50 needs a newly validated joint plan. Dense-grid and historical execution studies have additional unmet requirements. No old daily financial backtest runner was converted or run on this mixed-currency holdout; the representative existing workflow is guarded, data-only training replay.
+The interrupted interactive all-asset workers were excluded. Completed all-64 and partition measurements came from finite hidden verification workers. Those workers had imported the earlier counter sampler, so their peaks conservatively include its redundant ctypes type-allocation overhead. The final maxsize-one native binding cache passed the repeated-sampling regression and the fresh 590-row day smoke test with identical data hash. Data selection, source checks and replay logic were unchanged.
+
+Delivery snapshot: 9,875,561 price rows, 64 pairs, SQLite `ok`, 0 foreign-key errors, 64 matching checkpoints; 195 original hashes and original viewer/partitions unchanged. Data files total 29,431,090,709 bytes versus 29,419,189,356 initially. Catalogue/operational receipts and the independently scheduled incremental runs account for growth, not research dataset copies. Aggregate diagnostic files: 5,451,235 bytes.
+
+Removed 227,222,055 bytes from seven explicitly owned test directories, plus the 551,717-byte temporary profiler after saving its text summary. No pre-existing source/archive/export cache was deleted. The existing M13 release created a 1,366-byte immutable registration sidecar; existing partition boundaries/manifests remain unchanged and no test-phase access was made.
+
+The existing six-hour task independently completed a public-only Session 0 cycle on November 12, 15:32-16:24 AEDT: exit 0, 64/64 successful OHLC requests, zero errors, no new pairs, 383 unresolved records preserved, and 46,080 actual recent candles appended (9,821,943 to 9,868,023 total rows). Another ordinary cycle can append further current data while historical research reads continue. No manual collector/backfill was invoked for this task. This proves noninteractive Session 0 operation, not a separately forced physical sign-out/reboot test.
+
+Completed queries verified technical access and replay for all 64 assets; that does not make all 64 admitted for this fixed study. The five explicit count failures remain rejected, the nine independent passes need appropriate immutable registration before a strategy study, and combining them with the approved 50 needs a newly validated joint plan. Dense-grid and historical execution studies have additional unmet requirements. No old daily financial backtest runner was converted or run on this mixed-currency holdout; the representative existing workflow is guarded, data-only training replay.
