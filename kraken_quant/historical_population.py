@@ -148,6 +148,7 @@ def references(data_dir,pair,start,end,as_of,selection=None):
  for path in sorted((Path(data_dir)/'historical_imports/receipts').glob('*.json')):
   doc=json.loads(path.read_text());name=path.relative_to(data_dir).as_posix()
   if doc['pair_id']!=pair or doc['month']<start.strftime('%Y-%m') or doc['month']>end.strftime('%Y-%m'):continue
+  if datetime.fromisoformat(doc['month']+'-01').replace(tzinfo=UTC)>=end:continue
   received=datetime.fromisoformat(doc['received_at'].replace('Z','+00:00'))
   if received>as_of or selection is not None and name not in selection:continue
   identity={k:v for k,v in doc.items() if k not in ('received_at','import_id','inserted_rows','identical_rows','conflicting_rows','conflict_path')}

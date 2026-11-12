@@ -172,6 +172,22 @@ class PartitionAlgorithm:
     def __init__(self,reader):
         self.reader=reader
 
+    def assess_partition_request(self,request):
+        """Read-only sufficiency assessment, never an executable partition.
+
+        Intended for sequential per-market inventory without creating manifests
+        or silently admitting independent markets to a joint research study.
+        """
+        try:
+            request=configuration(request,self.reader)
+            reader=ResearchData(self.reader.data_dir,as_of=request.cutoff,clock=self.reader.clock)
+            result=self._generate(reader,request,persist=False)
+        except (ValueError,OSError,KeyError,TypeError,AttributeError) as error:
+            result=self._reject('SOURCE_UNAVAILABLE',[dict(reason=str(error))])
+        report=result.report
+        report.update(executable=False,assessment_only=True,manifest_id=None)
+        return report
+
     def generate_partition_plan(self,request):
         normalized=False
         try:
@@ -231,7 +247,7 @@ class PartitionAlgorithm:
                 index[(asset,dataset)]=(first,last)
         return index,metadata
 
-    def _generate(self,reader,request):
+    def _generate(self,reader,request,*,persist=True):
         index,metadata=self._index(reader,request)
         groups=[request.assets] if request.selection_policy=='COMMON_CALENDAR' else [(p,) for p in request.assets]
         successful=[];all_failures=[];budget=0;audits=[]
@@ -290,7 +306,7 @@ class PartitionAlgorithm:
                         count+=sum(load_start<=t<right for t in reader.store.read(asset,dataset,month)['timestamp'].to_pylist())
                     if count>request.maximum_records:
                         return self._reject('INVALID_CONFIGURATION',[dict(reason='Selected record budget exceeded; narrow the range or explicitly raise maximum_records.',records=count)])
-                    key=(asset,dataset);frame=reader._load(dataset,asset,load_start,right)
+                    key=(asset,dataset);frame=reader._load(dataset,asset,load_start,right,archive_first=True)
                     frames[key]=frame
                     windows,errors=archive_windows(reader,asset,dataset,load_start,right)
                     if errors:return self._reject('SOURCE_UNAVAILABLE',[dict(asset=asset,dataset=dataset,reasons=errors)])
@@ -365,8 +381,8 @@ class PartitionAlgorithm:
                 performance_inputs_accepted=False,holdout_guarantee='NOT_CERTIFIED_UNTOUCHED'),
             guarantees=['Shared calendar boundaries within every common-calendar fold.','Every asset/data type/phase validated by M12.','No fitted user model or feature code is inspected.','A plan does not authorize live orders.'])
         raw=encoded(body);ident=sha(raw)
-        immutable(reader.data_dir/'partition_plans/v1'/(ident+'.json'),raw)
-        return PartitionPlan('READY',ident,raw)
+        if persist:immutable(reader.data_dir/'partition_plans/v1'/(ident+'.json'),raw)
+        return PartitionPlan('READY',ident if persist else None,raw)
 
     @staticmethod
     def _necessary_counts(reader,request,assets,left,right):
